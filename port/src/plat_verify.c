@@ -35,6 +35,7 @@
 extern const char *Port_FileRoot(void); /* plat_file.c */
 extern void Port_UiNotice(const char *text); /* gs/ui.cpp */
 extern void PortFp_Run(int detail); /* plat_fprint.c: the gameplay fingerprint, computed on this thread */
+extern void PortFp_Pending(int on);  /* plat_fprint.c: it will be computed (1) / it will not after all (0) */
 static int sCheck = 1; /* 0 with BT3_VERIFY=0: only the fingerprint */
 
 enum { DATA_CHECKING = 0, DATA_ORIGINAL = 1, DATA_MODIFIED = 2, DATA_OFF = 3 };
@@ -141,9 +142,10 @@ static void *verify_thread(void *arg) {
     int n;
 
     (void)arg;
-    /* Rooms need the gameplay identity before the much larger integrity scan.
-       In particular, per-file stat calls on mounted or slow drives can take
-       longer than the room startup deadline. The full check still runs below. */
+    /* The gameplay fingerprint first, before the pass over all the disc's files below: it reads only the files the
+       fights are computed from (a few hundred megabytes, or nothing with its cache), and it decides whether this
+       game may go online. On a slow drive (a USB hard disk) the pass over the ~68,600 files took long enough that
+       the online screens were opened before the fingerprint was known (seen by a player). */
     PortFp_Run(0);
     if (!sCheck) {
         return NULL;
@@ -202,6 +204,8 @@ static void *verify_thread(void *arg) {
             return NULL;
         }
     }
+    /* (the fingerprint, above, has read a few hundred megabytes of the 3 GB: the comparison below finds those files in
+       the system's cache) */
     sDiffer = sMissing = sMods = 0;
     memset(sFirst, 0, sizeof(sFirst));
     buf = malloc(1 << 20);
@@ -291,10 +295,12 @@ void Port_VerifyStart(void) {
         sCheck = 0; /* no comparison with the disc, no notice; the fingerprint is still computed */
     }
     sState = sCheck ? DATA_CHECKING : DATA_OFF;
+    PortFp_Pending(1); /* (from now on the fingerprint is "being computed": the online screens wait for it) */
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     if (pthread_create(&th, &attr, verify_thread, NULL) != 0) {
         sState = DATA_OFF;
+        PortFp_Pending(0);
     }
     pthread_attr_destroy(&attr);
 }

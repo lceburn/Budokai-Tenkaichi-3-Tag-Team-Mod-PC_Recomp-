@@ -4,6 +4,10 @@
 #include "battle/btl_char_hit.h"
 #include "battle/tag_options.h"
 #include "battle/tag_team.h"
+#ifdef PORT
+#include "bt3_zcounter2.h"
+#include "bt3_gameplay_rules.h"
+#endif
 
 /* Fighter hit resolution, 0x1C7B30-0x1CA6D0. The frame flow and the structures are in battle/btl_char_hit.h.
  *
@@ -1070,6 +1074,17 @@ void BtlHit_TestHit(HitChr *chr) {
         if(!TagTeam_CanContact(actor,victim))continue;
         if(!TagContact_Has(actor,victim) && !(victim==locked && BtlChar_TestFlag(chr,0x65)))continue;
         contactActor=actor;contactVictim=victim;opp=BtlChar_Get(victim);
+#ifdef PORT
+        /* The current tag contact pair is visible through BtlOpp_GetPlayer.
+           Counter each eligible defender before resolving this pair. */
+        if (Bt3Gameplay_ZCounter2Enabled()) {
+            Bt3ZCounter2_BeforeHit(chr);
+            if (BtlChar_TestFlag(chr, 0x60)) {
+                contactActor=contactVictim=-1;
+                return;
+            }
+        }
+#endif
         if(__builtin_fabsf(BtlOpp_GetYawFromFacing(chr))<1.5707963f || (BtlAtk_GetFlags(chr)&8)) {
             handled=1;
             if(BtlHit_IsVoid(chr,opp) || BtlHit_CheckDodge(chr,opp) || BtlHit_CheckArmor(chr,opp) || BtlHit_CheckRepel(chr,opp))

@@ -3,6 +3,10 @@
 #include "sys/pad.h"
 #include "sys/save.h"
 #include "menu/tag_tournament.h"
+#ifdef PORT
+extern void Port_MenuPage(int screen); /* port/src/gs_marker.c: widescreen menus */
+extern void Port_MenuFill(int on);
+#endif
 
 /*
  * Bracket, 0x364DA8..0x3660A0: the tournament bracket screen (progress mode 35), first source file: the screen's
@@ -134,6 +138,9 @@ void Bracket_Term(void) {
 
 /* Draws the backdrop, the tree, the moving chips, the guide with its message window, the panels and the reward window. */
 void Bracket_Draw(void) {
+#ifdef PORT
+    Port_MenuPage(21); /* widescreen menus: this screen's page */
+#endif
     TourBg_Draw();
     Bracket_SetupDraw(gBracket);
     Flash_Draw(&gBracket->flash[BRK_FL_TREE]);
@@ -151,6 +158,9 @@ void Bracket_Draw(void) {
         Flash_Draw(&gBracket->flash[BRK_FL_TITLE]);
     }
     GetWin_Draw();
+#ifdef PORT
+    Port_MenuPage(0);
+#endif
     TagTournament_DrawBracket(gBracket);
 }
 

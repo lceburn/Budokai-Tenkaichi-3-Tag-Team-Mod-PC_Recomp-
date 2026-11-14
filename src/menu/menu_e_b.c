@@ -72,6 +72,11 @@ static s32 sPortStageRows = TS_STAGE_COLS; /* rows of the stage reel: the game's
 #define STGGRID_ID_LOCKED (PortGame_IsBT4() ? 0xFE : 0x3E)
 #define STGGRID_ID_EMPTY (PortGame_IsBT4() ? 0xFF : 0x3F)
 #endif
+#ifdef PORT
+extern void Port_MenuPage(int screen); /* port/src/gs_marker.c: widescreen menus */
+extern void Port_MenuMovie(int index);
+extern void Port_MenuFill(int on);
+#endif
 
 /*
  * TeamSel: the team character / stage / music select of the versus modes, 0x348D78..0x351C38. One object,
@@ -1057,7 +1062,15 @@ void TeamSel_Draw(void) {
                 gTeamSel->bgAlpha[i] = 0x80;
             }
         }
-        if(!practicePickHidden)Sprite_DrawPicture(gTeamSel->bg[i], 0, 0, gTeamSel->bgAlpha[i]);
+#ifdef PORT
+        Port_MenuPage(3); /* widescreen menus: the versus character select's page (port/src/gs_marker.c), as the one-on-one
+                             one: its backdrop and the stage pictures filling the width, each player's side at its edge */
+        Port_MenuFill(1);
+        if (!practicePickHidden) Sprite_DrawPicture(gTeamSel->bg[i], 0, 0, gTeamSel->bgAlpha[i]);
+        Port_MenuFill(0);
+#else
+        if (!practicePickHidden) Sprite_DrawPicture(gTeamSel->bg[i], 0, 0, gTeamSel->bgAlpha[i]);
+#endif
     }
     flash = &gTeamSel->flash[0];
     for (i = 0; i < TEAMSEL_SIDES; i++) {
@@ -1460,13 +1473,28 @@ void TeamSel_Draw(void) {
             }
         }
     }
+#ifdef PORT
+    Port_MenuPage(3); /* (also when no backdrop was drawn above) */
+    for (i = 0; i < TEAMSEL_FLASH_NUM; i++) {
+        Port_MenuMovie(i == 3 || i == 4 ? i | 0x100 : i); /* (its movies as the one-on-one select's: 1, 3 and 5 the first
+                                                             player's, 2, 4, 6 the other's; 3 and 4 the rosters) */
+        if(TagSession_Selected() && TagSession_Mode()==TAG_MODE_TOURNAMENT && (i==2 || i==4 || i==6)) continue;
+        if(!practicePickHidden) Flash_Draw(&gTeamSel->flash[i]);
+    }
+    Port_MenuMovie(0);
+#else
     for (i = 0; i < TEAMSEL_FLASH_NUM; i++) {
         if(TagSession_Selected() && TagSession_Mode()==TAG_MODE_TOURNAMENT && (i==2 || i==4 || i==6))continue;
         if(!practicePickHidden)Flash_Draw(&gTeamSel->flash[i]);
     }
+
+#endif
     if(!practicePickHidden) {
-        Font_FlushAll();IconWin_Draw();ItemPanel_Draw(0);ItemPanel_Draw(1);ItemHelp_Draw(gTeamSel->help);
+        Font_FlushAll(); IconWin_Draw(); ItemPanel_Draw(0); ItemPanel_Draw(1); ItemHelp_Draw(gTeamSel->help);
     }
+#ifdef PORT
+    Port_MenuPage(0);
+#endif
 }
 
 /* ======== 0x34D368: the per-frame update, the pad handler and the main loop ======== */

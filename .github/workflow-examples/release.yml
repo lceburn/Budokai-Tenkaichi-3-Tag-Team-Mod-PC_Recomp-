@@ -1,4 +1,5 @@
-# Builds the Linux and Windows release archives on GitHub's machines, from the repository alone.
+# Builds the Linux and Windows release archives on GitHub's machines, from the repository alone, and the Mac one
+# (macos.yml, on GitHub's Mac).
 # No disc and no game data are involved: the game's data tables are built blank (port/data) and the finished
 # program fetches their values from the user's own disc at start. The same build runs locally with
 # port/release/build.sh.
@@ -37,12 +38,15 @@ jobs:
       # BT3_BUILD_KEY: the release's build key (port/matchmaking/README.md), from the repository secret of that
       # name, for a tag's build only: the archives of an ordinary push are not a release and carry no key. Where
       # there is no such secret (a fork) it is empty, and the programs are built without a key as well.
+      # BT3_VERSION: the program's full number, from the tag (v0.1.38.10 -> 0.1.38.10), which the automatic update
+      # compares with the newest release's tag; an ordinary push's archives are "dev" and never offered updates.
       - name: Build both archives
         env:
           BT3_BUILD_KEY: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.BT3_BUILD_KEY || '' }}
+          BT3_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
         run: |
           mkdir -p port/build
-          docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -e BT3_BUILD_KEY -v "$PWD":/src -w /src \
+          docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -e BT3_BUILD_KEY -e BT3_VERSION -v "$PWD":/src -w /src \
             bt3-port-release:jammy sh port/release/inside.sh
 
       - uses: actions/upload-artifact@v4
