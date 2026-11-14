@@ -27,12 +27,22 @@ def main():
     parser.add_argument('--launcher', type=Path, default=ROOT / 'port/build/Play.exe')
     parser.add_argument('--output', type=Path, default=ROOT / 'port/build/native-setup')
     parser.add_argument('--version', type=int, default=5, help='Native beta release number')
+    parser.add_argument('--experimental-startup', action='store_true',
+                        help='Package an explicitly experimental build; Setup must verify the startup checksum against the local ISO before installation.')
     args = parser.parse_args()
     windows = args.platform == 'windows'
     if windows != (sys.platform == 'win32'):
         raise ValueError('Freeze Setup on the same operating system as the release.')
     dat = (args.portable / 'bt3.dat').read_bytes()
-    native_tables.check_recipe_coverage(dat)
+    try:
+        native_tables.check_recipe_coverage(dat)
+    except native_tables.RecipeCoverageError:
+        if not args.experimental_startup:
+            raise
+        print('EXPERIMENTAL: startup coverage is unverified. Setup retains its mandatory disc-table checksum check.')
+    test_note = ('EXPERIMENTAL TEST BUILD — gameplay and disc compatibility are unverified.\n'
+                 'Setup checks your disc startup data before installing and stops if it does not match.\n\n'
+                 if args.experimental_startup else '')
     output = args.output.resolve()
     if output.exists() and any(output.iterdir()):
         raise ValueError('Choose an empty packaging output folder.')
@@ -79,17 +89,21 @@ def main():
     shutil.copy2(ROOT / 'port/licenses/SDL.txt', licenses / 'SDL.txt')
     launcher = 'Play.exe' if windows else 'Play.sh'
     (payload / 'Read me.txt').write_text(
-        f'Tag Team Mod — Recomp Beta .{args.version}\n\nStart {launcher}. Press Select at the main menu for Modded Modes.\n'
+        test_note + f'Tag Team Mod — Recomp Beta .{args.version}\n\nStart {launcher}. Press Select at the main menu for Modded Modes.\n'
         'Double-click the game picture or press Alt+Enter to switch fullscreen. F11 also works.\n'
         'F1 opens graphics, controller, language and mod settings. Online modes are in the game menu.\n'
         'Mod Settings > Controls changes target, lock-off and menu buttons. F1 > Controls changes keyboard and gamepad bindings.\n'
         'Your saves are in saves/. Setup copies imported saves; it never changes the original.\n'
         'English and Spanish mod menus are included. Disc audio comes from your selected disc.\n'
         'BT3: USA, Europe/Australia, Japan. BT4: B14 REV2 English and Spanish.\n\n'
-        'Source: https://github.com/tehmufti/Budokai-Tenkaichi-3-Tag-Team-Mod-PC_Recomp-\n', encoding='utf-8')
+        'Source: https://github.com/lceburn/Budokai-Tenkaichi-3-Tag-Team-Mod-PC_Recomp-\n', encoding='utf-8')
     manifest = {p.relative_to(payload).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                 for p in sorted(payload.rglob('*')) if p.is_file() and p.name != 'manifest.json'}
-    (payload / 'release.json').write_text(json.dumps(dict(version=f'beta.{args.version}', platform=args.platform+'-x86_64'))+'\n')
+    release = dict(version=f'beta.{args.version}' + ('-experimental' if args.experimental_startup else ''),
+                   platform=args.platform+'-x86_64')
+    if args.experimental_startup:
+        release.update(experimental=True, startup_verification='install-time-checksum')
+    (payload / 'release.json').write_text(json.dumps(release)+'\n')
     # Include release metadata in the same integrity manifest as every asset.
     manifest['release.json']=hashlib.sha256((payload/'release.json').read_bytes()).hexdigest()
     (payload / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
@@ -100,7 +114,7 @@ def main():
             '--add-data', str(ROOT / 'port/tools/native_table_recipes.json') + os.pathsep + '.',
             str(ROOT / 'port/tools'/script)], check=True)
     setup = 'Setup.exe' if windows else './Setup.sh'
-    (output / 'Read me.txt').write_text(f'Extract the whole archive, then run {setup}.\n'
+    (output / 'Read me.txt').write_text(test_note + f'Extract the whole archive, then run {setup}.\n'
         'Already installed? Run Update instead and choose your existing game folder.\n'
         'Updating keeps your saves, settings, bindings and imported disc data. Close the game first.\n'
         'Choose your disc image, English or Spanish, and an optional existing save.\n'
@@ -114,7 +128,7 @@ def main():
         for name in ('Setup','Update'):
             (output/(name+'.sh')).write_text('#!/bin/sh\nset -eu\ncd -- "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"\nexec "$PWD/'+name+'" "$@"\n')
             (output/(name+'.sh')).chmod(0o755)
-    updater_readme=('Close the game. Extract this archive outside your installed game folder.\n'
+    updater_readme=(test_note+'Close the game. Extract this archive outside your installed game folder.\n'
         'Run '+('Update.exe' if windows else './Update.sh')+' and choose that existing folder.\n'
         'Saves, settings, controller bindings and disc assets stay in place.\n'
         'Use the same disc ISO only if the updater asks for additional startup tables.\n'
@@ -125,7 +139,7 @@ def main():
     for update_only in (False,True):
         import io
         label='Updater-' if update_only else ''
-        archive=output.parent/(f'Tag-Team-Recomp-Beta.{args.version}-'+label+('Windows.zip' if windows else 'Linux-x86_64.tar.gz'))
+        archive=output.parent/(f'Tag-Team-Recomp-Beta.{args.version}-'+('Experimental-' if args.experimental_startup else '')+label+('Windows.zip' if windows else 'Linux-x86_64.tar.gz'))
         paths=[p for p in sorted(output.rglob('*')) if p.is_file() and not (update_only and p.name in ('Setup','Setup.exe','Setup.sh'))]
         if windows:
             with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as z:

@@ -17,13 +17,21 @@ import package_native_setup as package
 @unittest.skipUnless(sys.platform == 'win32', 'Windows installer packaging')
 class NativePackageTests(unittest.TestCase):
     def test_current_libraries_and_script_resources_are_in_both_archives(self):
+        self.package_fixture(False)
+
+    def test_experimental_package_is_labelled_and_does_not_require_checker(self):
+        self.package_fixture(True)
+
+    def package_fixture(self, experimental):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             portable = root / 'portable'
             portable.mkdir()
             for name in ('bt3.exe', 'bt3.exe.mem'):
                 (portable / name).write_bytes(b'asset-free test fixture')
-            (portable / 'bt3.dat').write_bytes(struct.pack('<4sIQ', b'BT3D', 0, 0xcbf29ce484222325))
+            data = (struct.pack('<4sIQ4I', b'BT3D', 1, 0, 0x20000000, 0, 0, 1)
+                    if experimental else struct.pack('<4sIQ', b'BT3D', 0, 0xcbf29ce484222325))
+            (portable / 'bt3.dat').write_bytes(data)
             sdl = root / 'SDL3.dll'
             launcher = root / 'Play.exe'
             sdl.write_bytes(b'SDL fixture')
@@ -41,6 +49,8 @@ class NativePackageTests(unittest.TestCase):
             args = ['package_native_setup', '--platform', 'windows', '--version', '999',
                     '--portable', str(portable), '--sdl', str(sdl),
                     '--launcher', str(launcher), '--output', str(output)]
+            if experimental:
+                args.append('--experimental-startup')
             with patch.object(sys, 'argv', args), patch.object(package.subprocess, 'run', side_effect=freeze):
                 package.main()
             payload = output / 'payload'
@@ -51,14 +61,33 @@ class NativePackageTests(unittest.TestCase):
                 self.assertIn('licenses/' + name + '.txt', manifest)
             self.assertIn('mods/modern_hud/mod.lua', manifest)
             self.assertEqual((payload / 'engine/TagTeam.dat').read_bytes()[:4], b'TTMD')
+            release = json.loads((payload / 'release.json').read_text())
+            self.assertEqual(release.get('experimental', False), experimental)
+            if experimental:
+                self.assertEqual(release['startup_verification'], 'install-time-checksum')
+                self.assertTrue((output / 'Read me.txt').read_text(encoding='utf-8').startswith('EXPERIMENTAL'))
+            self.assertFalse(any('Check-BT4' in name for name in manifest))
             for label in ('', 'Updater-'):
-                archive = root / ('Tag-Team-Recomp-Beta.999-' + label + 'Windows.zip')
+                archive = root / ('Tag-Team-Recomp-Beta.999-' + ('Experimental-' if experimental else '') + label + 'Windows.zip')
                 with zipfile.ZipFile(archive) as packed:
                     names = packed.namelist()
                     self.assertIn('Update.exe', names)
                     self.assertEqual('Setup.exe' in names, not bool(label))
                     self.assertIn('payload/licenses/miniaudio.txt', names)
                     self.assertFalse(any(name.lower().endswith('.iso') for name in names))
+
+    def test_normal_packages_still_reject_gaps_and_experimental_rejects_bad_manifests(self):
+        cases = [(struct.pack('<4sIQ4I', b'BT3D', 1, 0, 0x20000000, 0, 0, 1), []),
+                 (b'corrupt manifest', ['--experimental-startup'])]
+        for data, flags in cases:
+            with self.subTest(flags=flags), tempfile.TemporaryDirectory() as folder:
+                root=Path(folder);portable=root/'portable';portable.mkdir()
+                (portable/'bt3.dat').write_bytes(data)
+                args=['package_native_setup','--platform','windows','--portable',str(portable),'--output',str(root/'output'),*flags]
+                with patch.object(sys,'argv',args),patch.object(package.subprocess,'run') as freeze:
+                    with self.assertRaises(ValueError):package.main()
+                    freeze.assert_not_called()
+                self.assertFalse((root/'output').exists())
 
 
 if __name__ == '__main__':

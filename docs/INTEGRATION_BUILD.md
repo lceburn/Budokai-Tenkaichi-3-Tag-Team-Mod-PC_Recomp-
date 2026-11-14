@@ -3,6 +3,30 @@
 The source integration is published on `integration/z3xox-main`. `main` remains
 unchanged. This follow-up builds that integration; it is not a release announcement.
 
+## Experimental installer without the standalone checker
+
+The standalone checker is optional and is no longer a prerequisite. At the
+user's request, an experimental installer can defer compatibility verification
+to normal Setup using `package_native_setup.py --experimental-startup`. Its
+archive name, readme and release metadata explicitly identify it as experimental.
+The normal packaging path still rejects recipe coverage gaps, and malformed
+manifests are rejected in both modes.
+
+This option does not change runtime checks: Setup still reconstructs and verifies
+the startup-table checksum against the player's local ISO before extracting data
+or creating an installation. The updater retains the same verification. A
+checksum mismatch stops installation; this option cannot make missing mappings
+work and does not establish compatibility or gameplay readiness.
+
+The standalone checker was reported blocked by the user's browser and Windows.
+It is not required, and no security settings were changed or bypassed. A newly
+packaged unsigned installer has not been verified as accepted by those systems.
+
+The experimental package uses beta version `6-experimental`; it is not a stable
+Beta 6 release. Regression checks cover experimental labelling, rejection of
+corrupt manifests, strict normal packaging, and stopping a wrong startup checksum
+before any installation or disc extraction occurs.
+
 ## Completed
 
 - Built the repository's isolated Ubuntu 22.04 compiler image with Clang/LLVM
@@ -37,9 +61,10 @@ generated files and logs stay under the ignored `port/build/` folder.
 
 The new skeleton build's manifest requests 210,773 bytes in 2,388 runs from 69
 tables. Existing native startup recipes leave 706 manifest records without full
-explicit coverage, for each supported disc profile. The installer packager
-correctly rejects this gap. No installer was published, and coverage/hash checks
-were not bypassed.
+explicit coverage, for each supported disc profile. The normal installer packager
+rejects this gap. Experimental packaging can defer the compatibility decision to
+the mandatory install-time checksum check, as described above. No stable
+installer has been published.
 
 The recipe reconstruction starts with zero-filled tables. A static coverage gap
 does not establish whether the player's reconstructed tables will match the new

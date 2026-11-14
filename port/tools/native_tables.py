@@ -12,6 +12,10 @@ from native_disc import GameDisc
 RECIPES = Path(__file__).with_name('native_table_recipes.json')
 
 
+class RecipeCoverageError(ValueError):
+    """Well-formed build manifest whose ranges are not all explicitly mapped."""
+
+
 def identify(path):
     recipes = json.loads(RECIPES.read_text(encoding='utf-8'))
     iso = GameDisc()
@@ -91,4 +95,4 @@ def check_recipe_coverage(dat):
                 if offset >= end:
                     break
             if offset < end:
-                raise ValueError(f"Rebuild native_table_recipes.json for this build ({profile['id']}).")
+                raise RecipeCoverageError(f"Rebuild native_table_recipes.json for this build ({profile['id']}).")

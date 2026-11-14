@@ -22,6 +22,21 @@ class SetupTests(unittest.TestCase):
             with self.assertRaises(ValueError):saves.collect(p)
             self.assertEqual(p.read_bytes(),b'invalid')
 
+    def test_wrong_startup_checksum_stops_before_any_installation(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);target=root/'game';iso=root/'disc.iso';iso.write_bytes(b'local disc fixture')
+            payload=root/'payload';(payload/'engine').mkdir(parents=True)
+            (payload/'engine/TagTeam.dat').write_bytes(struct.pack('<4sIQ4I',b'TTMD',1,0,0x20000000,0,0,1))
+            with patch.object(setup.native_tables,'identify',return_value=({'id':'bt4-en'},[],[])), \
+                 patch.object(setup.native_tables,'reconstruct',return_value=[bytes(1),bytes(1)]), \
+                 patch.object(setup,'payload_files',return_value={}),patch.object(setup,'extract') as extract:
+                with self.assertRaisesRegex(ValueError,'startup recipes'):
+                    setup.install(iso,target,payload=payload,progress=lambda _:None)
+                extract.assert_not_called()
+            self.assertFalse(target.exists())
+            self.assertFalse(any(root.glob('.tag-team-install-*')))
+            self.assertEqual(iso.read_bytes(),b'local disc fixture')
+
     def test_native_save_is_copied_and_custom_equipment_kept(self):
         with tempfile.TemporaryDirectory() as d:
             source=Path(d)/'source';source.mkdir()
