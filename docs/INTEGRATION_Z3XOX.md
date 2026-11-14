@@ -33,6 +33,9 @@ Neither local nor remote `main` is part of the write operation.
 No conflict-marker blocks remain. No tag-only tracked file was removed by the
 integration. This is a source integration, not a validated release binary.
 
+For the subsequent full Windows build and current installer blocker, see
+[Windows build follow-up](INTEGRATION_BUILD.md).
+
 ## Validation
 
 Run from the repository root. Generated diagnostics and downloaded SDL 3.4.12
@@ -49,7 +52,8 @@ headers are local, ignored files under `port/build/`; no disc data was used.
   compilation or GPU validation was performed.
 - Python tests passed: `test_net_build.py` (7), `test_native_disc.py` (3),
   `native_setup.py` (8 passed, 1 skipped), `native_update.py` (7),
-  `native_play.py` (2). The setup test requiring a real supported disc was skipped.
+  `native_play.py` (2). The POSIX launcher setup check was skipped on Windows;
+  real-disc gameplay tests were not run.
 - Executable regressions passed: `tag_view_layout.c`, `tag_clash_sequence.c`,
   `tag_lobby_rules.c`, and `settings_store.py` (500 settings/bindings).
 - New production-code regressions passed under AddressSanitizer:

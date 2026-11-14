@@ -114,5 +114,23 @@ class UpdateTests(unittest.TestCase):
                 updater.update(target,payload,progress=lambda _:None)
             self.assertEqual((target/'Play.exe').read_bytes(),original);self.unchanged(target,keep)
 
+    def test_bundled_script_examples_do_not_replace_or_claim_player_mods(self):
+        for installed in (False,True):
+            with self.subTest(installed=installed),tempfile.TemporaryDirectory() as folder:
+                target,payload,keep=self.fixture(Path(folder))
+                name='mods/modern_hud/mod.lua'
+                source=payload/name;source.parent.mkdir(parents=True);source.write_bytes(b'new example')
+                manifest_path=payload/'manifest.json'
+                manifest=json.loads(manifest_path.read_text());manifest[name]=updater.digest(source)
+                manifest_path.write_text(json.dumps(manifest))
+                if installed:
+                    dest=target/name;dest.parent.mkdir(parents=True);dest.write_bytes(b'player-edited script')
+                with patch.object(setup,'platform_name',return_value='windows'):
+                    updater.update(target,payload,progress=lambda _:None)
+                if installed:self.assertEqual((target/name).read_bytes(),b'player-edited script')
+                else:self.assertFalse((target/name).exists())
+                self.assertNotIn(name,json.loads((target/'installation.json').read_text())['files'])
+                self.unchanged(target,keep)
+
 
 if __name__=='__main__':unittest.main()

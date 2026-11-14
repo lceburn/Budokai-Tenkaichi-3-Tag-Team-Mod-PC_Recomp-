@@ -66,10 +66,15 @@ def main():
     upstream.take_lang(payload)
     upstream.take_fonts(payload, licenses)
     upstream.take_tbo_art(payload, licenses)
+    upstream.take_example_mods(payload)
     for source, name in [('LICENSE', 'AGPL-3.0.txt'), ('LICENSE-MIT', 'upstream-MIT.txt'),
         ('port/third_party/imgui/LICENSE.txt', 'dear-imgui.txt'),
         ('port/third_party/newlib_libm/COPYING.NEWLIB', 'newlib.txt'),
-        ('port/third_party/xxhash/LICENSE', 'xxhash.txt'), ('port/third_party/dr_libs/LICENSE', 'dr_mp3.txt')]:
+        ('port/third_party/xxhash/LICENSE', 'xxhash.txt'),
+        ('port/third_party/miniaudio/LICENSE', 'miniaudio.txt'),
+        ('port/third_party/miniz/LICENSE', 'miniz.txt'),
+        ('port/third_party/lua/LICENSE', 'lua.txt'),
+        ('port/third_party/monocypher/LICENCE.md', 'monocypher.txt')]:
         shutil.copy2(ROOT / source, licenses / name)
     shutil.copy2(ROOT / 'port/licenses/SDL.txt', licenses / 'SDL.txt')
     launcher = 'Play.exe' if windows else 'Play.sh'

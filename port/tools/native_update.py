@@ -153,7 +153,11 @@ def update(target, payload=setup.PAYLOAD, iso=None, progress=print):
         state=json.loads(metadata.read_text(encoding='utf-8'))
         if state.get('schema')!=1 or not isinstance(state.get('files'),dict):raise ValueError('Unsupported installation record.')
         progress('Checking update / Comprobando actualización...')
-        files=setup.payload_files(payload)
+        # Validate the entire payload first. Script examples are installed by a
+        # fresh Setup, but mods/ belongs to the player after installation.
+        # An update must neither overwrite edited scripts nor claim ownership.
+        files={name:digest for name,digest in setup.payload_files(payload).items()
+               if not name.startswith('mods/')}
         release=json.loads((payload/'release.json').read_text(encoding='utf-8'))
         if release.get('platform')!=platform+'-x86_64':raise ValueError('Wrong updater platform.')
         for name in files:
