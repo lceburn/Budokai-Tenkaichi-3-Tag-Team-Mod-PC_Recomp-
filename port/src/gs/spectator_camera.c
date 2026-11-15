@@ -2,6 +2,7 @@
 /* Host-only presentation state: not serialized, hashed or replayed by netcode. */
 #include "presentation.h"
 #include "spectator_camera.h"
+#include "../../../include/battle/tag_camera_controls.h"
 #include <SDL3/SDL.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,7 +34,7 @@ unsigned PortSpectator_InputButtons(int player,unsigned buttons) {
     if(player!=0 || gPortResim)return buttons;
     held=(buttons&1u)!=0;
     enabled=__atomic_load_n(&sBattleActive,__ATOMIC_RELAXED) && Port_Setting("spectator_select_cycle",0);
-    if(enabled && held && !sSelectHeld && !gPortOverlayOpen)PortSpectator_SetMode((PortSpectator_Mode()+1)%4);
+    if(enabled && held && !sSelectHeld && !gPortOverlayOpen)PortSpectator_SetMode(TagCamera_SelectNext(PortSpectator_Mode()));
     sSelectHeld=held;
     return enabled?buttons&~1u:buttons;
 }

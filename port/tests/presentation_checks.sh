@@ -2,6 +2,10 @@
 set -eu
 cd "$(dirname "$0")/../.."
 sh port/tests/spectator/run.sh
+cc -std=gnu99 -w -ffunction-sections -fdata-sections -Iinclude -Iport/include port/tests/test_battle_damage.c -Wl,--gc-sections -o /tmp/tag-battle-damage
+/tmp/tag-battle-damage
+cc -std=gnu99 -w -ffunction-sections -fdata-sections -Iinclude -Iport/include port/tests/test_blast_deflect.c -Wl,--gc-sections -lm -o /tmp/tag-blast-deflect
+/tmp/tag-blast-deflect
 cc -no-pie -std=c99 -Wall -Wextra -fsanitize=address,undefined port/tests/mods/test_camera_bridge.c -o /tmp/tag-camera-bridge
 /tmp/tag-camera-bridge
 cc -g -O1 -fsanitize=address,undefined -fno-sanitize-recover=all port/tests/mods/test_mods.c port/src/gs/mods_lua.c -lm -lpthread -o /tmp/tag-mods-test

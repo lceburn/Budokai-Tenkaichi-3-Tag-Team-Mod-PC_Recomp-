@@ -1,5 +1,8 @@
 #include "common.h"
 #include "battle/btl_char_ctl.h"
+#ifdef PORT
+#include "battle/tag_damage.h"
+#endif
 
 /*
  * Character change requests and the "time stopped" word: 0x1D60A0..0x1D6438.
@@ -74,7 +77,30 @@ void BtlChange_Update(void) {
     } else {
         q->timeStop = 1;
     }
+#ifdef PORT
+    /* A cosmetic model-only swap has no action handler to acknowledge it. */
+    if(q->cur && q->cur->kind==BTL_CHANGE_KIND_CHARA &&
+       q->cur->slot==BTL_CHANGE_DAMAGE_SLOT && q->state==BTL_CHANGE_LOADED)
+        q->state=BTL_CHANGE_READY;
+#endif
 }
+
+#ifdef PORT
+s32 BtlChange_IsBattleDamage(s32 player) {
+    BtlChangeReq *req=gBtlChars->change.cur;
+    return req && req->player==player && req->kind==BTL_CHANGE_KIND_CHARA && req->slot==BTL_CHANGE_DAMAGE_SLOT;
+}
+s32 BtlChange_RequestBattleDamage(s32 player,s32 chara,s32 costume) {
+    BtlChangeQueue *q=&gBtlChars->change;BtlChangeReq *req;
+    /* Never compete with a transformation/member switch or fill the ring. */
+    if(q->cur || q->write!=q->read)return 0;
+    req=BtlChange_Alloc();if(!req)return 0;
+    memset(req,0,sizeof(*req));req->player=player;req->kind=BTL_CHANGE_KIND_CHARA;
+    req->chara=chara;req->costume=costume;req->variant=1;
+    req->animChara=req->unk18=req->voiceChara=-1;req->slot=BTL_CHANGE_DAMAGE_SLOT;
+    return 1;
+}
+#endif
 
 /* Queues a character model change (transformation, fusion, member switch) for a player. */
 void BtlChange_RequestChara(s32 player, s32 chara, s32 costume, s32 variant, s32 animChara, s32 unk18, s32 voiceChara) {

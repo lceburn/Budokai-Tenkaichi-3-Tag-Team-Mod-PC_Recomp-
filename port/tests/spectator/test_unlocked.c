@@ -5,12 +5,12 @@
 #include <math.h>
 #include <stdio.h>
 Pad gPad[PAD_COUNT];
-static int unlocked=1,speed=100;
+static int unlocked=1,locked=0,speed=100;
 int TagTeam_Active(void){return 1;}
 int TagTeam_LockedOff(int actor){return actor==0 && unlocked;}
 int TagTeam_InputPlayer(int actor){return actor;}
 int Port_TagOption(int id){(void)id;return speed;}
-int BtlChar_TestFlag(ChrCamChr *chr,int flag){(void)chr;return flag==0xc9;}
+int BtlChar_TestFlag(ChrCamChr *chr,int flag){(void)chr;return flag==5?locked:flag==0xc9;}
 float BtlInput_GetStickX(ChrCamChr *chr){(void)chr;return 0;}
 int BtlInput_TestAction(ChrCamChr *chr,int action,int mode){(void)chr;(void)action;(void)mode;return 0;}
 float BtlUtil_WrapAngle(float x){return atan2f(sinf(x),cosf(x));}
@@ -29,9 +29,23 @@ int main(void){
     TagCamera_Reset();ChrCam_UpdateFreeYaw(&chr);yaw=chr.cam.yaw;
     assert(yaw>.05f && tagFreePitch[0]>.05f);
     ChrCam_CalcFree(&chr,&eye,&rot,&target);assert(rot.x>-.001f);
+    { /* At either pitch limit the fighter anchor keeps its original framing
+         and camera distance, rather than disappearing below/above the view. */
+        const float dy=-6,dz=-50,r2=dy*dy+dz*dz;
+        for(int i=-1;i<=1;i+=2) {
+            float p=i*1.2f,x,y,z;
+            tagFreePitch[0]=p;chr.cam.yaw=0;
+            ChrCam_CalcFree(&chr,&eye,&rot,&target);
+            x=eye.x-target.x;y=eye.y-target.y;z=eye.z-target.z;
+            assert(fabsf(x*x+y*y+z*z-r2)<.002f);
+            assert(fabsf(y*cosf(p)+z*sinf(p)-dy)<.001f);
+            assert(fabsf(-y*sinf(p)+z*cosf(p)-dz)<.001f);
+        }
+    }
     TagCamera_Reset();chr.cam.yaw=0;speed=200;ChrCam_UpdateFreeYaw(&chr);
     assert(fabsf(chr.cam.yaw-yaw*2)<.0001f);
-    unlocked=0;chr.cam.yaw=0;ChrCam_UpdateFreeYaw(&chr);assert(chr.cam.yaw==0);
+    unlocked=0;chr.cam.yaw=0;ChrCam_UpdateFreeYaw(&chr);assert(chr.cam.yaw>0); /* searching */
+    locked=1;chr.cam.yaw=0;ChrCam_UpdateFreeYaw(&chr);assert(chr.cam.yaw==0);
     TagCamera_Reset();assert(tagFreePitch[0]==0);
     puts("PASS: production unlocked camera uses both right-stick axes and sensitivity; locked-on camera input remains unchanged.");
 }

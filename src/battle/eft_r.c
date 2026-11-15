@@ -75,6 +75,7 @@ extern s32 BtlCharApi_IsChargingKiBlast(s32 objId);
 extern s32 BtlCharApi_IsInClashA(s32 objId);
 extern f32 BtlCharApi_GetClashBias(void);
 extern void BtlCharApi_GetDeflectDir(s32 objId, EftRVec *out);
+extern s32 BtlCharApi_GetOpponentObjId(s32 objId);
 extern void BtlCharApi_PlaySoundAt(EftRVec *pos, s32 kind, s32 id, f32 near, f32 far);
 
 extern void EftTechEvt_RequestExpire(s32 objId);
@@ -1060,17 +1061,40 @@ void EftKiBlast_Turn(EftRTask *task, EftKiBlast *w) {
     EftRVec dir;
     u16 id;
     s32 life;
+#ifdef PORT
+    s32 deflector=BtlEffect_TakeDeflector(task,BtlCharApi_GetOpponentObjId(w->arg.objId));
+#endif
 
     Vec3_Lerp(&w->pose.pos, &task->pos, &w->pose.prev, 0.7f);
     if (task->hit & EFT_R_HIT_DEFLECT) {
-        BtlCharApi_GetDeflectDir((s16)TagTeam_Target(w->arg.objId), &dir);
+        BtlCharApi_GetDeflectDir(
+#ifdef PORT
+            deflector,
+#else
+            (s16)TagTeam_Target(w->arg.objId),
+#endif
+            &dir);
         Vec4_Copy(&w->pose.dir, &dir);
+#ifdef PORT
+        w->arg.objId=deflector;
+#else
         w->arg.objId ^= 1;
+#endif
         w->flags = (w->flags & ~EFT_KIBLAST_HOMING) | EFT_KIBLAST_DEFLECTED;
     } else if (task->hit & EFT_R_HIT_REFLECT) {
-        BtlCharApi_GetDeflectDir((s16)TagTeam_Target(w->arg.objId), &dir);
+        BtlCharApi_GetDeflectDir(
+#ifdef PORT
+            deflector,
+#else
+            (s16)TagTeam_Target(w->arg.objId),
+#endif
+            &dir);
         Vec4_Copy(&w->pose.dir, &dir);
+#ifdef PORT
+        w->arg.objId=deflector;
+#else
         w->arg.objId ^= 1;
+#endif
         w->life = w->arg.life;
     }
 }
@@ -1162,6 +1186,11 @@ void EftKiBlast_Init(EftRTask *task, EftRArg *arg) {
 void EftKiBlast_Term(EftRTask *task) {
     EftKiBlast *w = task->work;
 
+#ifdef PORT
+    /* TermState is a no-op. Retire persistent emitters before this task's
+       work storage is returned to the blast pool. */
+    EftEmit_KillAll(w->set, &w->state);
+#endif
     EftEmit_TermState(w->set, &w->state);
 }
 
@@ -1918,17 +1947,40 @@ void EftKiObj_AddHitRecord(EftRTask *task) {
    direction replaces the velocity. */
 void EftKiObj_Turn(EftRTask *task, EftKiObj *w) {
     EftRVec dir;
+#ifdef PORT
+    s32 deflector=BtlEffect_TakeDeflector(task,BtlCharApi_GetOpponentObjId(w->b.arg.objId));
+#endif
 
     Vec3_Lerp(&w->b.pose.pos, &task->pos, &w->b.pose.prev, 0.7f);
     if (task->hit & EFT_R_HIT_DEFLECT) {
-        BtlCharApi_GetDeflectDir((s16)TagTeam_Target(w->b.arg.objId), &dir);
+        BtlCharApi_GetDeflectDir(
+#ifdef PORT
+            deflector,
+#else
+            (s16)TagTeam_Target(w->b.arg.objId),
+#endif
+            &dir);
         Vec4_Copy(&w->b.pose.dir, &dir);
+#ifdef PORT
+        w->b.arg.objId=deflector;
+#else
         w->b.arg.objId ^= 1;
+#endif
         w->b.flags |= EFT_KIBOMB_DEFLECTED;
     } else if (task->hit & EFT_R_HIT_REFLECT) {
-        BtlCharApi_GetDeflectDir((s16)TagTeam_Target(w->b.arg.objId), &dir);
+        BtlCharApi_GetDeflectDir(
+#ifdef PORT
+            deflector,
+#else
+            (s16)TagTeam_Target(w->b.arg.objId),
+#endif
+            &dir);
         Vec4_Copy(&w->b.pose.dir, &dir);
+#ifdef PORT
+        w->b.arg.objId=deflector;
+#else
         w->b.arg.objId ^= 1;
+#endif
         w->b.life = w->b.arg.life;
     }
 }

@@ -57,10 +57,11 @@ int main(void) {
     PortSpectator_SetMode(0);assert(PortSpectator_Manual() && !PortSpectator_Mode());
     PortSpectator_UseAutomatic();assert(!PortSpectator_Manual());
     Port_SettingSave("spectator_select_cycle",1);PortSpectator_BattleActive(1);
-    for(int n=1;n<=4;n++) {
+    const int select_modes[]={1,3,0};
+    for(int n=0;n<3;n++) {
         assert(PortSpectator_InputButtons(0,1)==0);
-        assert(PortSpectator_Mode()==n%4 && PortSpectator_Manual());
-        PortSpectator_InputButtons(0,1);assert(PortSpectator_Mode()==n%4);
+        assert(PortSpectator_Mode()==select_modes[n] && PortSpectator_Manual());
+        PortSpectator_InputButtons(0,1);assert(PortSpectator_Mode()==select_modes[n]);
         PortSpectator_InputButtons(0,0);
     }
     assert(PortSpectator_InputButtons(1,1)==1);

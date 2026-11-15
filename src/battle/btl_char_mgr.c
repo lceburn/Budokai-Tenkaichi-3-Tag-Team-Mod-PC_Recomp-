@@ -12,6 +12,9 @@
 #ifdef PORT
 #include "bt3_zcounter2.h"
 #include "bt3_gameplay_rules.h"
+#include "battle/tag_damage.h"
+extern s32 BtlChange_RequestBattleDamage(s32,s32,s32),BtlChange_IsBattleDamage(s32);
+extern void BtlChange_SetDone(s32),BtlChar_SavePlacement(BtlMgrChr *);
 extern int Port_NetSession(void);
 extern int Port_NetActive(void);
 extern int Port_Setting(const char *name, int def);
@@ -505,6 +508,14 @@ void BtlChar_OnModelLoaded(BtlMgrChr *chr) {
         break;
     }
     { extern void TagFusion_ModelLoaded(s32); TagFusion_ModelLoaded(chr->side); }
+#ifdef PORT
+    if(BtlChange_IsBattleDamage(chr->side)) {
+        BtlMember_GetActiveGauge(chr)->unk20=1;
+        BtlChar_SetFlag(chr,0xF5);
+        BtlChar_SetFlag(chr,0x55);
+        BtlChange_SetDone(chr->side);
+    }
+#endif
     BtlObj_SetColorPreset(obj, BtlParam_GetAuraKind(chr), -1);
     if (BtlMember_GetActiveGauge(chr)->unk20 != 0) {
         obj->flags |= 0x40000000;
@@ -1228,6 +1239,15 @@ void BtlChar_PostScene(BtlMgrChr *chr) {
     BtlChar_ObjToPose(chr);
     ChrCam_Update(chr);
     BtlFx_UpdatePostScene(chr);
+#ifdef PORT
+    if(TagTeam_Active() && BtlSeq_IsFighting() && BtlAct_GetCurrent(chr)==0xB) {
+        BtlMgrGauge *g=BtlMember_GetActiveGauge(chr);
+        BtlMgrMember *member=BtlMember_GetActive(chr);
+        if(TagDamage_ShouldChange(g->health,g->healthMax,g->unk20,BtlMember_HasAbility(chr,0x7A)) &&
+           BtlChange_RequestBattleDamage(chr->side,member->chara,member->costume))
+            BtlChar_SavePlacement(chr);
+    }
+#endif
     if (BtlMember_GetActiveGauge(chr)->health < 10000) {
         BtlMember_GetActiveGauge(chr)->lowHealth = 1;
         if (!(BtlParam_GetUnk0(chr) & 0x80) && chr->unkE14 <= 0 && chr->unkE18 <= 0 && !BtlChar_TestFlag(chr, 6)) {

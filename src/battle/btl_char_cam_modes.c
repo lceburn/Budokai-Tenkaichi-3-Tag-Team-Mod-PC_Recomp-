@@ -8,6 +8,12 @@
 #include "sys/pad.h"
 static f32 tagFreePitch[TAG_TEAM_CAPACITY];
 void TagCamera_Reset(void) { s32 i;for(i=0;i<TAG_TEAM_CAPACITY;i++)tagFreePitch[i]=0; }
+/* Relock/search starts before native lock flag 5 is acquired. Keep looking
+   until that flag actually rises, rather than stopping on the button press. */
+static s32 TagCamera_FreeLook(ChrCamChr *chr) {
+    return TagTeam_Active() && (u32)chr->side<TAG_TEAM_CAPACITY &&
+        TagTeam_InputPlayer(chr->side)>=0 && !BtlChar_TestFlag(chr,5);
+}
 #endif
 
 /* The fighter camera's modes, per-frame update and cut control, 0x1C5840-0x1C7B30: the last part of
@@ -296,6 +302,17 @@ void ChrCam_CalcFree(ChrCamChr *chr, Vec4 *eye, Vec4 *rot, Vec4 *target) {
     look.z = 0.0f;
     look.y = -scale;
     pitch = ChrCam_GetOffset(chr, &ofs, cam->distMode);
+#ifdef PORT
+    if(TagCamera_FreeLook(chr)) {
+        f32 angle=tagFreePitch[chr->side],sy=Mathf_Sin(angle),cy=Mathf_Cos(angle);
+        f32 dy=ofs.y-look.y,dz=ofs.z-look.z;
+        /* Orbit the same body anchor used by horizontal look. Preserve the
+           original offset and framing at zero pitch. */
+        ofs.y=look.y+dy*cy-dz*sy;
+        ofs.z=look.z+dy*sy+dz*cy;
+        pitch+=angle;
+    }
+#endif
     yaw = cam->yaw;
     s = Mathf_Sin(yaw);
     eye->x = pos.x + s * (ofs.z - look.z) + look.z;
@@ -307,9 +324,6 @@ void ChrCam_CalcFree(ChrCamChr *chr, Vec4 *eye, Vec4 *rot, Vec4 *target) {
     target->y = look.y + pos.y;
     target->z = look.z + pos.z;
     target->w = one;
-#ifdef PORT
-    if(TagTeam_LockedOff(chr->side))pitch+=tagFreePitch[chr->side];
-#endif
     rot->x = pitch;
     rot->y = yaw;
     rot->z = 0.0f;
@@ -404,7 +418,7 @@ void ChrCam_UpdateFreeYaw(ChrCamChr *chr) {
     f32 d;
 
 #ifdef PORT
-    if(TagTeam_LockedOff(chr->side)) {
+    if(TagCamera_FreeLook(chr)) {
         s32 player=TagTeam_InputPlayer(chr->side);
         if(player>=0) {
             f32 x=gPad[player].gameRight[0],y=gPad[player].gameRight[1];
@@ -471,7 +485,7 @@ void ChrCam_UpdateInput(ChrCamChr *chr) {
     Vec4 *dst = &chr->cam.unk40;
 
 #ifdef PORT
-    if(TagTeam_Active() && !TagTeam_LockedOff(chr->side) && (u32)chr->side<TAG_TEAM_CAPACITY)
+    if(TagTeam_Active() && BtlChar_TestFlag(chr,5) && (u32)chr->side<TAG_TEAM_CAPACITY)
         tagFreePitch[chr->side]=0;
 #endif
 
@@ -525,6 +539,12 @@ void ChrCam_Update(ChrCamChr *chr) {
     } else {
         ChrCam_CalcFree(chr, &eye, &rot, &target);
         keepBehind = 1;
+#ifdef PORT
+        /* The orbit already stays on the fighter's rear hemisphere. The
+           horizontal head plane would push steep pitches backwards and
+           break the anchor; terrain collision below remains active. */
+        if(TagCamera_FreeLook(chr))keepBehind=0;
+#endif
     }
 shake:
     CamShake_Calc(&cam->shake, &shakePos, &shakeRot);

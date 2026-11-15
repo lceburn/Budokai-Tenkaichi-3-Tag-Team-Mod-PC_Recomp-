@@ -1,6 +1,7 @@
 #include "battle/tag_clash.h"
 #include "common.h"
 #include "battle/eft_det_a.h"
+#include "battle/btl_effect_owner.h"
 
 /*
  * 0x1AE2A8..0x1B16F0: effect texture tail, volley aim, fighter-against-fighter volumes, the hit detection over
@@ -1013,8 +1014,14 @@ void EftDet_FighterPass(void) {
                         continue;
                     }
                     if (BtlColl_TryDeflect(target, rec)) {
+#ifdef PORT
+                        BtlEffect_RecordDeflector(rec->task,BattleSide_GetObjId(target));
+#endif
                         EftHit_SetTaskFlag(i, 0x40, rec->shape.contact);
                     } else if (BtlColl_TryReflect(target, rec)) {
+#ifdef PORT
+                        BtlEffect_RecordDeflector(rec->task,BattleSide_GetObjId(target));
+#endif
                         EftHit_SetTaskFlag(i, 0x80, rec->shape.contact);
                     } else if (BtlColl_TryAbsorb(target, rec)) {
                         EftHit_SetTaskFlag(i, 0x20, rec->shape.contact);

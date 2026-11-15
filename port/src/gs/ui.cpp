@@ -2670,7 +2670,7 @@ static void spectator_tab(void) {
     if(ImGui::Checkbox("Use Select to cycle camera",&cycle)) {
         Port_SettingSave("spectator_select_cycle",cycle);Port_SettingsWrite();
     }
-    ImGui::SetItemTooltip("During combat: Game camera, Free camera, Follow fighter, Fight overview, then Game camera. Select is reserved for this while enabled.");
+    ImGui::SetItemTooltip("During combat: Game camera, Free camera, Fight overview, then Game camera. Follow fighter remains available here. Select is reserved for cycling while enabled.");
     ImGui::TextWrapped("A manual selection overrides automatic death-spectator views. Each new match starts with Game camera.");
     int mode=PortSpectator_Mode();
     const char *modes[]={"Game camera","Free camera","Follow fighter","Fight overview"};

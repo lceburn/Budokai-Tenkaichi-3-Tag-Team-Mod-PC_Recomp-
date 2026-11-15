@@ -25,10 +25,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR args, int show
     (void)instance; (void)previous; (void)args; (void)show;
     count = GetModuleFileNameW(NULL, root, 32768);
     if (!count || count >= 32768 || !(slash = wcsrchr(root, L'\\')))
-        return error(L"Could not find the installation folder. / No se encuentra la carpeta de instalación.");
+        return error(L"Could not find the installation folder.");
     *slash = 0;
     if (wcslen(root) > 32600 || !SetCurrentDirectoryW(root))
-        return error(L"Could not open the installation folder. / No se puede abrir la carpeta de instalación.");
+        return error(L"Could not open the installation folder.");
 
     /* Run a temporary copy so the updater can replace this launcher and itself.
        The helper starts Play.exe --skip-update after completing or declining. */
@@ -87,7 +87,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR args, int show
     if (log == INVALID_HANDLE_VALUE || input == INVALID_HANDLE_VALUE) {
         if (log != INVALID_HANDLE_VALUE) CloseHandle(log);
         if (input != INVALID_HANDLE_VALUE) CloseHandle(input);
-        return error(L"The installation folder is not writable. Move the game to a folder you can write to.\n\nLa carpeta no permite escribir. Mueve el juego a una carpeta con permiso de escritura.");
+        return error(L"The installation folder is not writable. Move the game to a folder you can write to.");
     }
     start.cb = sizeof(start);
     start.dwFlags = STARTF_USESTDHANDLES;
@@ -95,12 +95,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR args, int show
     start.hStdOutput = start.hStdError = log;
     if (!CreateProcessW(path, command, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, root, &start, &process)) {
         CloseHandle(input); CloseHandle(log);
-        return error(L"Could not start engine\\TagTeam.exe. Keep Play.exe in the complete installation folder.\n\nNo se pudo iniciar el juego. Mantén Play.exe en la carpeta de instalación completa.");
+        return error(L"Could not start engine\\TagTeam.exe. Keep Play.exe in the complete installation folder.");
     }
     CloseHandle(input); CloseHandle(log); CloseHandle(process.hThread);
     WaitForSingleObject(process.hProcess, INFINITE);
     GetExitCodeProcess(process.hProcess, &status);
     CloseHandle(process.hProcess);
-    if (status) return error(L"The game stopped. Check game.log and bt3_crash.txt (if present) in the installation folder.\n\nEl juego se ha detenido. Consulta game.log y bt3_crash.txt (si existe) en la carpeta de instalación.");
+    if (status) return error(L"The game stopped unexpectedly. Check game.log and bt3_crash.txt (if present) in the installation folder.");
     return 0;
 }

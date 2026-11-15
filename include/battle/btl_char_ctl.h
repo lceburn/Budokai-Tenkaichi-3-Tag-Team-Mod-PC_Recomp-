@@ -77,6 +77,10 @@ void BtlChange_Reset(void);
 void BtlChange_Update(void);
 void BtlChange_RequestChara(s32 player, s32 chara, s32 costume, s32 variant, s32 animChara, s32 unk18, s32 voiceChara);
 void BtlChange_RequestObject(s32 player, s32 id, s32 costume, s32 variant, s32 slot);
+#ifdef PORT
+s32 BtlChange_RequestBattleDamage(s32 player,s32 chara,s32 costume);
+s32 BtlChange_IsBattleDamage(s32 player);
+#endif
 void BtlChange_SetTaken(void);
 void BtlChange_SetLoaded(void);
 s32 BtlChange_IsLoadedFor(s32 player);

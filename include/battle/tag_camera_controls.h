@@ -1,6 +1,8 @@
 #ifndef TAG_CAMERA_CONTROLS_H
 #define TAG_CAMERA_CONTROLS_H
 typedef struct TagSpectatorChoice { int actor,mode; } TagSpectatorChoice;
+/* Select skips Follow; F1 and the native death-spectator cycle retain it. */
+static inline int TagCamera_SelectNext(int mode) { return mode==0?1:mode==3?0:3; }
 static inline float TagCamera_OverviewRadius(float height) {
     float r=(height<0?-height:height)*.55f;
     return (r>1?r:1)+1;
