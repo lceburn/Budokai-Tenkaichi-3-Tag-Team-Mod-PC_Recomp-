@@ -13,6 +13,8 @@
 #include "fight_panels.h"
 #include "mods.h"
 #include "ui.h"
+#include "../../../include/battle/tag_options.h"
+extern "C" int Port_TagOption(int);
 
 ImFont *Ui_FontBold(void); // ui.cpp: the first of the game's fonts (NULL: the window's own)
 SDL_GPUTexture *Ui_Texture(uint8_t *pix, uint32_t w, uint32_t h); // ui.cpp (takes pix)
@@ -257,6 +259,7 @@ static void portrait_face(ImDrawList *dl, SDL_GPUTexture *tex, const ModsCmd &c,
 }
 
 void ModsUi_Draw(void) {
+    if(Port_TagOption(TAG_OPT_HIDE_ALL_HUD))return;
     if (gUiPresentW <= 0 || gUiPresentH <= 0 || !Mods_HudRead(&sDraw)) {
         return;
     }

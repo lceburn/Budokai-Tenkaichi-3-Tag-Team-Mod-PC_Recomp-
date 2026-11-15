@@ -2666,10 +2666,12 @@ static void meter_draw(void) {
 // letters with a dark outline, as tall as the rectangle allows, centred for a stage and from the left for a song.
 static void spectator_tab(void) {
     ImGui::TextWrapped("After defeat, your configured target/spectator button cycles character views, Free camera, Fight overview, then the first character. Return to a character view before taking over a teammate.");
-    if(TagNet_Active() && !TagNet_Observer()) {
-        ImGui::TextWrapped("Spectator camera controls are available when you join the room as an observer.");
-        return;
+    bool cycle=Port_Setting("spectator_select_cycle",0)!=0;
+    if(ImGui::Checkbox("Use Select to cycle camera",&cycle)) {
+        Port_SettingSave("spectator_select_cycle",cycle);Port_SettingsWrite();
     }
+    ImGui::SetItemTooltip("During combat: Game camera, Free camera, Follow fighter, Fight overview, then Game camera. Select is reserved for this while enabled.");
+    ImGui::TextWrapped("A manual selection overrides automatic death-spectator views. Each new match starts with Game camera.");
     int mode=PortSpectator_Mode();
     const char *modes[]={"Game camera","Free camera","Follow fighter","Fight overview"};
     for(int n=0;n<4;n++)if(ImGui::RadioButton(Port_TagText(modes[n]),mode==n)){PortSpectator_SetMode(n);mode=n;}
@@ -2683,6 +2685,7 @@ static void spectator_tab(void) {
     if(ImGui::SliderInt(Port_TagText("Camera speed"),&speed,25,400,"%d%%"))PortSpectator_SetSpeed(speed);
     int zoom=PortSpectator_Zoom();
     if(ImGui::SliderInt(Port_TagText("Camera zoom"),&zoom,100,300,"%d%%",ImGuiSliderFlags_AlwaysClamp))PortSpectator_SetZoom(zoom);
+    ImGui::SetItemTooltip("Overview fits the fighters at 100%. Higher zoom gives a closer view and may crop the group. Follow fighter uses that fighter's native camera.");
     if(ImGui::Button(Port_TagText("Reset camera")))PortSpectator_ResetCamera();
     ImGui::EndDisabled();ImGui::Separator();
     ImGui::TextWrapped("%s",Port_TagText("Close F1 to control the camera. WASD: move; Q/E: descend/ascend; arrows: turn; Shift: accelerate; +/-: zoom."));
@@ -3069,7 +3072,7 @@ static bool frame_build(void) {
     if (!sOpen && !sQuit && !sChat && Port_Setting("hide_pointer", 1) != 0) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_None);
     }
-    if (bars) {
+    if (bars && !Port_TagOption(TAG_OPT_HIDE_ALL_HUD)) {
         bars_draw();
     }
     ModsUi_Draw(); // (the script mods' shapes over the picture: gs/mods_ui.cpp)

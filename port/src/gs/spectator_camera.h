@@ -31,7 +31,7 @@ static float spec_dot(const float a[3],const float b[3]) { return a[0]*b[0]+a[1]
 static int spec_step(SpecCamera *s,int mode,int target,int speed,float zoom,float dt,
                      const float native_eye[4],const float native_rot[4],
                      const float *targets,int count,SpecInput in,float tan_y,float aspect) {
-    float right[3],up[3],forward[3],goal[3],focus[3]={0,0,0},required=35,rate;
+    float right[3],up[3],forward[3],goal[3],focus[3]={0,0,0},required=10,rate;
     int i,k,reset;
     if(mode<1 || mode>3 || count<1 || count>15) { s->live=0;return 0; }
     dt=spec_clamp(dt,0,.05f);zoom=spec_clamp(zoom,100,300);
@@ -63,17 +63,19 @@ static int spec_step(SpecCamera *s,int mode,int target,int speed,float zoom,floa
             s->distance=spec_clamp(s->distance-spec_clamp(in.forward,-1,1)*80*rate*dt,15,800);
             required=fmaxf(s->distance,targets[target*4+3]*3);
         } else {
-            float ty=spec_clamp(tan_y,.1f,2)*100/s->zoom;
+            /* Fit once at the normal lens. Zoom must zoom in, rather than
+               moving the eye away again to cancel the player's choice. */
+            float ty=spec_clamp(tan_y,.1f,2);
             float tx=ty*spec_clamp(aspect,.75f,4);
             for(i=0;i<count;i++) {
                 float delta[3],depth,r=spec_clamp(targets[i*4+3],1,1000);
                 for(k=0;k<3;k++)delta[k]=targets[i*4+k]-s->focus[k];
                 depth=spec_dot(delta,forward);
-                required=fmaxf(required,fmaxf((fabsf(spec_dot(delta,right))+r)/(tx*.75f)-depth,
-                                             (fabsf(spec_dot(delta,up))+r)/(ty*.75f)-depth)+r);
+                required=fmaxf(required,fmaxf((fabsf(spec_dot(delta,right))+r)/(tx*.88f)-depth,
+                                             (fabsf(spec_dot(delta,up))+r)/(ty*.88f)-depth)+r);
             }
             /* Expand immediately to retain fighters; contract gradually. */
-            s->distance=required>s->distance?required:s->distance+(required-s->distance)*(1-expf(-3*dt));
+            s->distance=reset || required>s->distance?required:s->distance+(required-s->distance)*(1-expf(-3*dt));
             required=s->distance;
         }
         for(k=0;k<3;k++)goal[k]=s->focus[k]-forward[k]*required;

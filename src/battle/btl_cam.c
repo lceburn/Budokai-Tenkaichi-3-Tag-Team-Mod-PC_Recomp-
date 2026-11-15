@@ -11,6 +11,7 @@
 #include "battle/tag_team.h"
 #include "battle/tag_options.h"
 #include "battle/tag_controls.h"
+#include "battle/tag_camera_controls.h"
 #include "battle/tag_clash.h"
 #ifdef PORT
 #include "../../port/src/gs/tag_net.h"
@@ -512,6 +513,7 @@ void BtlCam_BuildView(BtlCamView *view, s32 apply) {
 /* Clears the camera block, rebuilds the views, selects view 0 and resets the demo camera. */
 void BtlCam_Reset(void) {
 #ifdef PORT
+    { extern void PortSpectator_EndDraw(void);PortSpectator_EndDraw(); }
     PortSpectator_EndBattle();
 #endif
     memset(gBtlCam, 0, sizeof(BtlCam));
@@ -530,6 +532,7 @@ void BtlCam_Init(void) {
 /* Frees the camera block and the demo camera. */
 void BtlCam_Term(void) {
 #ifdef PORT
+    { extern void PortSpectator_EndDraw(void);PortSpectator_EndDraw(); }
     PortSpectator_EndBattle();
 #endif
     Heap_Free(gBtlCam);
@@ -753,6 +756,16 @@ extern int Port_NetView(void); /* port/src/gs/net.c: the local player's view (0 
 #include "../../port/src/gs/presentation.h"
 /* A host presentation view. Never overwrite a fighter camera or replay state. */
 PORT_HOST static BtlCamView spectatorView;
+static void BtlCam_CopyAuthoredView(BtlCamView *out,BtlCamView *native,View *rendered) {
+    *out=*native;out->view=*rendered;out->pos=rendered->pos;
+}
+static void BtlCam_FollowPose(BtlCamView *out,s32 total) {
+    s32 actor=PortSpectator_Target();
+    if(actor<0 || actor>=total)actor=0;
+    if(TagTeam_Active())actor=TagTeam_CameraActor(TagFusion_Owner(actor));
+    BtlCharApi_GetCamPose(BattleSide_GetObjId(actor),&out->pos,&out->rot);
+}
+
 static s32 BtlCam_SpectatorView(BtlCamView *out,BtlCamView *native,s32 slot,s32 mode,s32 player,s32 full) {
     extern int gPortResim,Port_AspectMilli(void);
     extern void BtlCharApi_GetBasePos(s32,Vec4 *);
@@ -768,13 +781,23 @@ static s32 BtlCam_SpectatorView(BtlCamView *out,BtlCamView *native,s32 slot,s32 
     aspect=Port_AspectMilli()/1000.f*(out->view.scissorX1-out->view.scissorX0+1)/512.f*
         448.f/(out->view.scissorY1-out->view.scissorY0+1);
     if(!__builtin_isfinite(tanY) || !__builtin_isfinite(aspect) || tanY<=0 || aspect<=0)return 0;
+    /* Follow means the selected fighter's working native camera, including
+       its own terrain collision and authored shots, not a second orbit camera. */
+    if(mode==2 && slot<0) {
+        BtlCam_FollowPose(out,total);
+        out->view.screenDist*=PortSpectator_Zoom()/100.f;
+        View_BuildProjection(&out->view);
+        View_SetTransform(&out->view.world2view,&out->view.world2view2,&out->pos,&out->rot);
+        View_UpdateMatrices(&out->view,&out->pos);
+        return 1;
+    }
     for(i=0;i<total;i++) {
-        s32 obj=BattleSide_GetObjId(i);f32 h,r;
+        s32 obj=BattleSide_GetObjId(i);f32 h;
         /* Overview frames live bodies, not eliminated or fused-away actors. */
         if(mode==3 && ((TagTeam_Active() && (!TagTeam_IsAlive(i) || TagFusion_Hidden(i))) || BtlCharApi_GetHp(obj)<=0))continue;
-        h=BtlCharApi_GetHeight(obj);r=BtlCharApi_GetRadius(obj);
+        h=BtlCharApi_GetHeight(obj);
         BtlCharApi_GetBasePos(obj,&targets[count]);
-        targets[count].y-=h*.5f;targets[count].w=fmaxf(fabsf(h)*.65f,fabsf(r))+2;count++;
+        targets[count].y-=h*.5f;targets[count].w=TagCamera_OverviewRadius(h);count++;
     }
     if(!count)return 0;
     if(slot<0) {
@@ -789,6 +812,7 @@ static s32 BtlCam_SpectatorView(BtlCamView *out,BtlCamView *native,s32 slot,s32 
             focus.x=focus.y=focus.z=0;
             for(i=0;i<count;i++){focus.x+=targets[i].x/count;focus.y+=targets[i].y/count;focus.z+=targets[i].z/count;}
         }
+        focus.w=1.0f; /* target.w stores a radius, not a homogeneous position */
         BtlCam_TraceStage(&eye,&eye,&focus,NULL,NULL);
         if(slot<0)PortSpectator_ResolveEye((f32 *)&eye);
     }
@@ -1072,7 +1096,11 @@ found:  actor=TagFusion_Owner(actor);
     { extern void Port_TagViewTrace(s32,s32,s32,s32,s32,s32,s32);
       Port_TagViewTrace(role,actor,TagTeam_ControlActor(role),TagTeam_CameraCount(),shared,nativeSharedActor,TagNet_IsPractice()); }
     /* Shared global scenes already have the correct native camera. */
-    if(shared)nativeViews[0]=*gBtlCam->cur;
+    if(shared) {
+        /* DemoCam applies its own View without replacing gBtlCam->cur.
+           Preserve that actual authored projection for transition particles. */
+        BtlCam_CopyAuthoredView(&nativeViews[0],gBtlCam->cur,gBtlCamView);
+    }
     else {
         for(i=0;i<TagTeam_CameraCount();i++)if(TagTeam_ViewActor(i)==actor){view=i;break;}
         nativeViews[0]=nativeViews[view];
@@ -1111,11 +1139,21 @@ s32 PortSpectator_BeginDraw(void) {
     extern void BtlObj_UpdateVisibility(s32),BtlObj_FinishVisibility(s32);
     s32 v,views=TagTeam_ViewCount(),role=TagNet_Role(),paused=(Battle_GetWork()->flags&BATTLE_FLAG_PAUSE_MENU)!=0;
     if(gPortResim || !gBtlCam)return 0;
+    PortSpectator_BattleActive(1);
+    PortSpectator_FighterCount(TagTeam_Active()?TagTeam_Count():2);
     PortSpectator_ClearViews();spectatorChanged=0;
     spectatorSavedCurrent=gBtlCam->cur;spectatorSavedMatrix=gBtlCamView;
     spectatorSavedSingle=gBtlScene->singleView;
-    if(!(TagNet_Active() && !TagNet_Observer()) && PortSpectator_Mode() && BtlCam_Spectator()) {
-        spectatorDrawing=1;BtlScene_SetSingleView(1);return 1;
+    if(Battle_GetWork()->flags&BATTLE_FLAG_LOADING) {
+        /* Planet/destruction effects and their particles use the authored
+           stage-transition view. Resume the selected camera after loading. */
+        PortSpectator_SetInputActive(0);return 0;
+    }
+    if(PortSpectator_Manual()) {
+        if(PortSpectator_Mode() && BtlCam_Spectator()) {
+            spectatorDrawing=1;BtlScene_SetSingleView(1);return 1;
+        }
+        PortSpectator_SetInputActive(0);return 0;
     }
     PortSpectator_SetInputActive(0);
     if(!TagTeam_Active() || (TagNet_Active() && TagNet_Observer()))return 0;

@@ -11,8 +11,8 @@ static void containment(SpecCamera *s,const float *targets,int count,float aspec
     for(i=0;i<count;i++) {
         float d[3],z,r=targets[i*4+3];for(k=0;k<3;k++)d[k]=targets[i*4+k]-s->eye[k];
         z=spec_dot(d,forward);assert(z>r);
-        assert((fabsf(spec_dot(d,right))+r)/(.517f*aspect*100/s->zoom)<z*.80f);
-        assert((fabsf(spec_dot(d,up))+r)/(.517f*100/s->zoom)<z*.80f);
+        assert((fabsf(spec_dot(d,right))+r)/(.517f*aspect*100/s->zoom)<z*.96f);
+        assert((fabsf(spec_dot(d,up))+r)/(.517f*100/s->zoom)<z*.96f);
     }
 }
 int main(void) {
@@ -42,7 +42,7 @@ int main(void) {
         float aspect=k==0?1.333f:k==1?1.777f:2.333f;memset(&s,0,sizeof(s));
         for(i=0;i<240;i++) {
             int actor;for(actor=0;actor<15;actor++)targets[actor*4]+=sinf((float)i)*5;
-            spec_step(&s,3,0,100,150,1.f/60,eye,rotation,targets,15,input,.517f,aspect);
+            spec_step(&s,3,0,100,100,1.f/60,eye,rotation,targets,15,input,.517f,aspect);
             containment(&s,targets,15,aspect);
             assert(isfinite(s.eye[0]) && isfinite(s.eye[1]) && isfinite(s.eye[2]));
         }
@@ -57,7 +57,11 @@ int main(void) {
     {
         SpecCamera pair={0};float close[8]={-8,-10,0,10,8,-10,0,10};
         spec_step(&pair,3,0,100,100,1.f/60,eye,rotation,close,2,input,.517f,1.777f);
-        assert(pair.distance<150);containment(&pair,close,2,1.777f);
+        assert(pair.distance<70);
+        { SpecCamera zoomed={0};
+          spec_step(&zoomed,3,0,100,200,1.f/60,eye,rotation,close,2,input,.517f,1.777f);
+          assert(fabsf(zoomed.distance-pair.distance)<.001f);
+        }containment(&pair,close,2,1.777f);
     }
     puts("PASS: four modes; frame-rate independent movement; 4x speed; zoom limits; target tracking/switching; 15-fighter framing at 4:3, 16:9 and 21:9; two-sided collision rays; unchanged native pose.");
     return 0;

@@ -1337,6 +1337,7 @@ int Port_PadRead(int socket, unsigned char *data) {
     }
     clash_square(socket, &btn, &lx, &ly);
     press_age(socket, btn);
+    btn=PortSpectator_InputButtons(socket,btn);
     if(PortSpectator_ConsumesPlayer(socket)) {
         btn=PortSpectator_FilterPlayer(socket,btn);rx=ry=lx=ly=0x80;
     }

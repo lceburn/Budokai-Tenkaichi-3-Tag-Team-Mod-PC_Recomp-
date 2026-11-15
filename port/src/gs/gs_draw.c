@@ -30,6 +30,8 @@
 #include "menu_text.h"  /* editable labels in the original menu texture slots */
 #include "menu_labels.h"      /* European menu art and native language selector pictures */
 #include "mods.h"             /* the look script mods ask for (bt3.look) */
+#include "../../../include/battle/tag_options.h"
+extern int Port_TagOption(int);
 #include <math.h>
 
 /* Stage-name overlay: defined here (C) so both the renderer (gs_gpu.c) and the game's menu (menu_c_e.c) can
@@ -1659,6 +1661,7 @@ static int sHudScope;
 extern int Mods_HudHidden(void);
 
 void GsGpu_Draw(int type, int ctx, const GsVertex *v) {
+    if(sHudScope && Port_TagOption(TAG_OPT_HIDE_ALL_HUD))return;
     if (sHudScope != 0 && (sHudScope & Mods_HudHidden()) != 0) { /* a script mod draws this piece of the HUD instead */
         return;
     }

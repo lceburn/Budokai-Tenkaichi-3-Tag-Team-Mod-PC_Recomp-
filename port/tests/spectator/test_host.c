@@ -53,6 +53,19 @@ int main(void) {
     assert(!memcmp(&saved,&sViewCamera[3],sizeof(saved)));gPortResim=0;
     PortSpectator_ClearViews();assert(!PortSpectator_ConsumesPlayer(1));
     PortSpectator_EndBattle();assert(!sViewCamera[3].live);
+    PortSpectator_SetMode(3);assert(PortSpectator_Manual());
+    PortSpectator_SetMode(0);assert(PortSpectator_Manual() && !PortSpectator_Mode());
+    PortSpectator_UseAutomatic();assert(!PortSpectator_Manual());
+    Port_SettingSave("spectator_select_cycle",1);PortSpectator_BattleActive(1);
+    for(int n=1;n<=4;n++) {
+        assert(PortSpectator_InputButtons(0,1)==0);
+        assert(PortSpectator_Mode()==n%4 && PortSpectator_Manual());
+        PortSpectator_InputButtons(0,1);assert(PortSpectator_Mode()==n%4);
+        PortSpectator_InputButtons(0,0);
+    }
+    assert(PortSpectator_InputButtons(1,1)==1);
+    PortSpectator_EndBattle();assert(!PortSpectator_Mode() && !PortSpectator_Manual());
+    assert(PortSpectator_InputButtons(0,1)==1); /* menus keep Select */
     assert(writes>0);puts("PASS: R7 setting migration; persistent mode/target/speed/zoom; rollback skips all camera input/state; F1 input isolation; Start/Select passthrough; pause navigation; camera reset; battle cleanup.");
     return 0;
 }

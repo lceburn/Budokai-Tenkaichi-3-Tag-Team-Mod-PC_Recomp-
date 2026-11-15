@@ -772,6 +772,10 @@ s32 TagTeam_SpectatorMode(s32 view) {
 void TagTeam_CycleSpectator(s32 view) {
     s32 n;unsigned mask=0;TagSpectatorChoice next;
     if(!TagTeam_Spectating(view)) return;
+#ifdef PORT
+    { extern int gPortResim;extern void PortSpectator_UseAutomatic(void);
+      if(!gPortResim && (!TagNet_Active() || view==TagNet_Role()))PortSpectator_UseAutomatic(); }
+#endif
     for(n=0;n<count;n++)if(watchable(n))mask|=1u<<n;
     next=TagSpectator_Next(count,viewActors[view],spectatorMode[view],mask);
     viewActors[view]=next.actor;spectatorMode[view]=next.mode;spectatorChosen[view]=1;

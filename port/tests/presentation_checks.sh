@@ -11,3 +11,8 @@ c++ -std=c++17 -Iport/third_party/imgui $(pkg-config --cflags sdl3) port/tests/t
     port/third_party/imgui/imgui_tables.cpp port/third_party/imgui/imgui_widgets.cpp \
     $(pkg-config --libs sdl3) -pthread -o /tmp/tag-hud-render
 /tmp/tag-hud-render
+c++ -std=c++17 -ffunction-sections -fdata-sections -Iport/third_party/imgui $(pkg-config --cflags sdl3) \
+    port/tests/mods/test_hud_visibility.cpp port/third_party/imgui/imgui.cpp \
+    port/third_party/imgui/imgui_draw.cpp port/third_party/imgui/imgui_tables.cpp port/third_party/imgui/imgui_widgets.cpp \
+    -Wl,--gc-sections $(pkg-config --libs sdl3) -pthread -o /tmp/tag-script-hud
+/tmp/tag-script-hud

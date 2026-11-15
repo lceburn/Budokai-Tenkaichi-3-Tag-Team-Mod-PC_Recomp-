@@ -1,6 +1,10 @@
 #ifndef TAG_CAMERA_CONTROLS_H
 #define TAG_CAMERA_CONTROLS_H
 typedef struct TagSpectatorChoice { int actor,mode; } TagSpectatorChoice;
+static inline float TagCamera_OverviewRadius(float height) {
+    float r=(height<0?-height:height)*.55f;
+    return (r>1?r:1)+1;
+}
 /* Native character views, free flight, overview, then the first character.
    Integer-only state belongs to the match; floating camera poses remain local. */
 static inline TagSpectatorChoice TagSpectator_Next(int count,int actor,int mode,unsigned watchable) {
