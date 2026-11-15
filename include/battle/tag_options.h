@@ -106,7 +106,9 @@
  X(TARGET_AFTER_KO,"tag_target_after_ko","Target After a KO",12,0,1,1,0,"Choose the enemy nearest the centre of your camera, or use the normal next-target order.") \
  X(MENU_BUTTON,"tag_menu_button","Mod Menu Button",12,0,8,1,0,"Button that opens or closes the modded mode list from the main menu.") \
  X(MENU_HINT,"tag_menu_hint","Show Mod Menu Hint",12,0,1,1,1,"Show the mod menu button on the main menu.") \
- X(MELEE_CONTACT,"tag_melee_contact","Hit Other Enemies",1,0,1,1,1,"Melee hits can strike every enemy touching the attack, even when you are locked onto someone else. Grabs remain one-on-one.")
+ X(MELEE_CONTACT,"tag_melee_contact","Hit Other Enemies",1,0,1,1,1,"Melee hits can strike every enemy touching the attack, even when you are locked onto someone else. Grabs remain one-on-one.") \
+ X(FREE_LOOK_X,"tag_free_look_x","Unlocked Look Horizontal Speed",12,25,300,5,100,"Right-stick horizontal camera speed while locked off only. Room host settings apply online.") \
+ X(FREE_LOOK_Y,"tag_free_look_y","Unlocked Look Vertical Speed",12,25,300,5,100,"Right-stick up/down tilt speed while locked off only. Room host settings apply online.")
 #define TAG_OPTION_ENUM(id,key,label,group,min,max,step,def,help) TAG_OPT_##id,
 enum {
     TAG_OPTION_LIST(TAG_OPTION_ENUM)

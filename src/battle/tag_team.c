@@ -44,7 +44,7 @@ static s32 traceFrame;
 static s32 wantedPlayers, wantedViews = 1, cooperate;
 static s32 viewActors[TAG_TEAM_CAPACITY], players[TAG_TEAM_CAPACITY];
 static s32 controlActors[TAG_TEAM_CAPACITY], initialActors[TAG_TEAM_CAPACITY];
-static s32 spectatorChosen[TAG_TEAM_CAPACITY];
+static s32 spectatorChosen[TAG_TEAM_CAPACITY],spectatorMode[TAG_TEAM_CAPACITY];
 static s32 unlocked[TAG_TEAM_CAPACITY], targetHeld[TAG_TEAM_CAPACITY];
 static s32 unlockHeld[TAG_TEAM_CAPACITY],watchHeld[TAG_TEAM_CAPACITY];
 static s32 stickLatch[TAG_TEAM_CAPACITY],stickNeutral[TAG_TEAM_CAPACITY];
@@ -490,6 +490,10 @@ void TagTeam_SetupDemo(s32 human, s32 team0, s32 team1) {
 }
 
 void TagTeam_Reset(void) {
+#ifdef PORT
+    extern void TagCamera_Reset(void);
+    TagCamera_Reset();
+#endif
     s32 i, j;
     traceFrame = 0;
     winningTeam=-1;
@@ -502,7 +506,7 @@ void TagTeam_Reset(void) {
     TagPosition_Reset();
     TagSpawn_Reset();
     TagLobby_Reset();
-    for(i=0;i<TAG_TEAM_CAPACITY;i++){spectatorChosen[i]=0;controlActors[i]=-1;viewActors[i]=0;}
+    for(i=0;i<TAG_TEAM_CAPACITY;i++){spectatorChosen[i]=spectatorMode[i]=0;controlActors[i]=-1;viewActors[i]=0;}
     if(TagNet_Active() || TagLobby_Practice()) {
         /* Player seats can have holes after a lobby role change. Never turn
            an unclaimed fighter into a player just to fill that hole. */
@@ -761,19 +765,23 @@ static s32 takeover_allowed(s32 player,s32 actor) {
         !TagAssist_Active(actor) && !busy(actor) && grab_other(actor)<0 &&
         !BtlCharApi_HasCamPriority(BattleSide_GetObjId(actor));
 }
+#include "battle/tag_camera_controls.h"
+s32 TagTeam_SpectatorMode(s32 view) {
+    return TagTeam_Spectating(view)?spectatorMode[view]:0;
+}
 void TagTeam_CycleSpectator(s32 view) {
-    s32 n;
+    s32 n;unsigned mask=0;TagSpectatorChoice next;
     if(!TagTeam_Spectating(view)) return;
-    for(n=1;n<=count;n++) {
-        s32 next=(viewActors[view]+n)%count;
-        if(watchable(next)) {viewActors[view]=next;spectatorChosen[view]=1;return;}
-    }
+    for(n=0;n<count;n++)if(watchable(n))mask|=1u<<n;
+    next=TagSpectator_Next(count,viewActors[view],spectatorMode[view],mask);
+    viewActors[view]=next.actor;spectatorMode[view]=next.mode;spectatorChosen[view]=1;
 }
 s32 TagTeam_TakeoverCandidate(s32 player) {
     s32 actor, i;
     if (!TagTeam_Active() || TagLobby_Practice() || (u32)player>=(u32)wantedPlayers || !Port_TagOption(TAG_OPT_TAKEOVER)) return -1;
     actor=controlActors[player];
     if(actor<0)return -1;
+    if(spectatorMode[player])return -1;
     if(TagFusion_Hidden(actor)) return -1;
     if (alive(actor)) return -1;
     if(spectatorChosen[player]) return takeover_allowed(player,viewActors[player])?viewActors[player]:-1;
@@ -877,7 +885,7 @@ void TagTeam_Update(void) {
         s32 actor=controlActors[i],candidate;
         if(TagNet_Active() && actor<0)continue;
         if(!TagTeam_Spectating(i)) {
-            viewActors[i]=TagFusion_Owner(actor); spectatorChosen[i]=0; watchHeld[i]=0; continue;
+            viewActors[i]=TagFusion_Owner(actor); spectatorChosen[i]=spectatorMode[i]=0; watchHeld[i]=0; continue;
         }
         if(spectatorChosen[i] && !watchable(viewActors[i])) spectatorChosen[i]=0;
         candidate=TagTeam_TakeoverCandidate(i);

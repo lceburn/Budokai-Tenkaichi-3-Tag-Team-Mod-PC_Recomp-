@@ -13,6 +13,8 @@ void Port_SettingSave(const char *name,int value) {
 }
 void Port_SettingsWrite(void) { writes++; }
 void PortInput_Spectator(float *axes) { int i;input_reads++;for(i=0;i<7;i++)axes[i]=0;axes[0]=.5f; }
+static int last_player;
+void PortInput_SpectatorSlot(int player,float *axes) { last_player=player;PortInput_Spectator(axes); }
 #include "../../src/gs/spectator_camera.c"
 int main(void) {
     float eye[4]={0,-20,-100,1},rot[4]={0,0,0,1},targets[8]={-20,-10,0,10,20,-10,0,10};
@@ -40,6 +42,17 @@ int main(void) {
     PortSpectator_EndBattle();assert(!sCamera.live && !PortSpectator_ConsumesInput());
     PortSpectator_SetMode(0);assert(Port_Setting("spectator_camera",-1)==0);
     assert(!PortSpectator_Camera(eye,rot,targets,2,.517f,1.777f,result_eye,result_rot,&zoom));
+    PortSpectator_ViewInput(1,1,2);
+    assert(PortSpectator_ConsumesPlayer(1) && !PortSpectator_ConsumesPlayer(0));
+    assert(PortSpectator_FilterPlayer(1,0xffff)==0x000b);
+    assert(PortSpectator_FilterPlayer(2,0xffff)==0xffff);
+    assert(PortSpectator_ViewCamera(3,1,1,eye,rot,targets,2,.517f,1.777f,result_eye,result_rot,&zoom));
+    assert(last_player==1 && sViewCamera[3].live && !sViewCamera[4].live);
+    saved=sViewCamera[3];gPortResim=1;
+    assert(!PortSpectator_ViewCamera(3,3,1,eye,rot,targets,2,.517f,1.777f,result_eye,result_rot,&zoom));
+    assert(!memcmp(&saved,&sViewCamera[3],sizeof(saved)));gPortResim=0;
+    PortSpectator_ClearViews();assert(!PortSpectator_ConsumesPlayer(1));
+    PortSpectator_EndBattle();assert(!sViewCamera[3].live);
     assert(writes>0);puts("PASS: R7 setting migration; persistent mode/target/speed/zoom; rollback skips all camera input/state; F1 input isolation; Start/Select passthrough; pause navigation; camera reset; battle cleanup.");
     return 0;
 }

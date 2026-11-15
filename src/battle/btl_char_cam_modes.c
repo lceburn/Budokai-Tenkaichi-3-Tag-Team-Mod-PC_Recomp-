@@ -3,6 +3,11 @@
 #ifdef PORT
 #include "battle/tag_team.h"
 #include "battle/btl_seq.h"
+#include "battle/tag_options.h"
+#include "battle/tag_camera_controls.h"
+#include "sys/pad.h"
+static f32 tagFreePitch[TAG_TEAM_CAPACITY];
+void TagCamera_Reset(void) { s32 i;for(i=0;i<TAG_TEAM_CAPACITY;i++)tagFreePitch[i]=0; }
 #endif
 
 /* The fighter camera's modes, per-frame update and cut control, 0x1C5840-0x1C7B30: the last part of
@@ -302,6 +307,9 @@ void ChrCam_CalcFree(ChrCamChr *chr, Vec4 *eye, Vec4 *rot, Vec4 *target) {
     target->y = look.y + pos.y;
     target->z = look.z + pos.z;
     target->w = one;
+#ifdef PORT
+    if(TagTeam_LockedOff(chr->side))pitch+=tagFreePitch[chr->side];
+#endif
     rot->x = pitch;
     rot->y = yaw;
     rot->z = 0.0f;
@@ -395,6 +403,18 @@ void ChrCam_UpdateFreeYaw(ChrCamChr *chr) {
     ChrCam *cam = &chr->cam;
     f32 d;
 
+#ifdef PORT
+    if(TagTeam_LockedOff(chr->side)) {
+        s32 player=TagTeam_InputPlayer(chr->side);
+        if(player>=0) {
+            f32 x=gPad[player].gameRight[0],y=gPad[player].gameRight[1];
+            cam->yaw=BtlUtil_WrapAngle(cam->yaw+x*Port_TagOption(TAG_OPT_FREE_LOOK_X)*(0.0523598776f/100.0f));
+            tagFreePitch[chr->side]=TagCamera_Pitch(tagFreePitch[chr->side],y,Port_TagOption(TAG_OPT_FREE_LOOK_Y));
+            return;
+        }
+    }
+#endif
+
     if (BtlChar_TestFlag(chr, 0xC9)) {
         cam->yaw = BtlUtil_WrapAngle(cam->yaw + BtlInput_GetStickX(chr) * 0.0333333333f);
         if (BtlInput_TestAction(chr, 0x61, 1)) {
@@ -449,6 +469,11 @@ void ChrCam_TurnToOpponent(ChrCamChr *chr, Vec4 *rot) {
 /* Camera controls, run in the fighter's control phase: SELECT steps the distance preset, then the yaw update. */
 void ChrCam_UpdateInput(ChrCamChr *chr) {
     Vec4 *dst = &chr->cam.unk40;
+
+#ifdef PORT
+    if(TagTeam_Active() && !TagTeam_LockedOff(chr->side) && (u32)chr->side<TAG_TEAM_CAPACITY)
+        tagFreePitch[chr->side]=0;
+#endif
 
     if (BtlInput_IsPressed(chr, 0x800000)) {
         chr->cam.distMode++;

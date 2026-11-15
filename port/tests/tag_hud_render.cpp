@@ -58,6 +58,8 @@ int main() {
     int full=draw();opts[TAG_OPT_SPECTATOR_NAME]=0;int hints=draw();
     assert(hints>0 && full>hints);opts[TAG_OPT_SPECTATOR_HINTS]=0;assert(draw()==0);
     opts[TAG_OPT_SPECTATOR_NAME]=1;assert(draw()>0);
+    latest.view[0].spectatorMode=1;assert(draw()>0);
+    latest.view[0].spectatorMode=3;assert(draw()>0);
     // Each remaining mod label has an independent draw switch.
     const int options[]={TAG_OPT_PLAYER_LABELS,TAG_OPT_ALLY_NAMES,
         TAG_OPT_REVIVE_PROGRESS_TEXT,TAG_OPT_REVIVE_COST_TEXT,

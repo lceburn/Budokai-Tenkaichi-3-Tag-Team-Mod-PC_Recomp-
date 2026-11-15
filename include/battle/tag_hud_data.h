@@ -22,6 +22,7 @@ typedef struct TagHudActor {
 } TagHudActor;
 typedef struct TagHudView {
     int actor, controlActor, takeover, visible, spectating, rect[4];
+    int spectatorMode;
     int reviveBody;
     TagHudPoint heads[TAG_HUD_MAX];
     TagHudPoint warnings[TAG_HUD_MAX];

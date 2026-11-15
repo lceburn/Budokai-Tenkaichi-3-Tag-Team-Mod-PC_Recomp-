@@ -2665,6 +2665,7 @@ static void meter_draw(void) {
 // The name of an added stage or song as text, in the rectangle the menu gives (the strip images' place): cream
 // letters with a dark outline, as tall as the rectangle allows, centred for a stage and from the left for a song.
 static void spectator_tab(void) {
+    ImGui::TextWrapped("After defeat, your configured target/spectator button cycles character views, Free camera, Fight overview, then the first character. Return to a character view before taking over a teammate.");
     if(TagNet_Active() && !TagNet_Observer()) {
         ImGui::TextWrapped("Spectator camera controls are available when you join the room as an observer.");
         return;

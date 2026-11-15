@@ -8,10 +8,15 @@
 extern int Port_Setting(const char *,int);
 extern void Port_SettingSave(const char *,int),Port_SettingsWrite(void);
 extern void PortInput_Spectator(float *axes);
+extern void PortInput_SpectatorSlot(int player,float *axes);
 extern int gPortOverlayOpen,gPortResim;
 static SpecCamera sCamera;
 static int sReset,sSeenReset,sCount=2,sInputActive,sLastZoom=100,sZoomHeld;
 static Uint64 sLastTick;
+static SpecCamera sViewCamera[15];
+static Uint64 sViewLastTick[15];
+static int sViewReset[15],sAutoInput[4];
+static unsigned sCycleButton[4];
 int PortSpectator_Mode(void) { return (int)spec_clamp(Port_Setting("spectator_mode",Port_Setting("spectator_camera",0)?1:0),0,3); }
 void PortSpectator_SetMode(int mode) {
     mode=(int)spec_clamp(mode,0,3);Port_SettingSave("spectator_mode",mode);
@@ -26,10 +31,42 @@ void PortSpectator_SetSpeed(int speed) { Port_SettingSave("spectator_speed",(int
 int PortSpectator_Zoom(void) { return (int)spec_clamp(Port_Setting("spectator_zoom",100),100,300); }
 void PortSpectator_SetZoom(int zoom) { Port_SettingSave("spectator_zoom",(int)spec_clamp(zoom,100,300));Port_SettingsWrite(); }
 void PortSpectator_ResetCamera(void) { PortSpectator_SetZoom(100);__atomic_add_fetch(&sReset,1,__ATOMIC_RELAXED); }
-void PortSpectator_EndBattle(void) { sCamera.live=0;sLastTick=0;__atomic_store_n(&sInputActive,0,__ATOMIC_RELAXED); }
+void PortSpectator_EndBattle(void) {
+    sCamera.live=0;sLastTick=0;__atomic_store_n(&sInputActive,0,__ATOMIC_RELAXED);
+    memset(sViewCamera,0,sizeof(sViewCamera));memset(sViewLastTick,0,sizeof(sViewLastTick));PortSpectator_ClearViews();
+}
 void PortSpectator_SetInputActive(int active) { __atomic_store_n(&sInputActive,active!=0,__ATOMIC_RELAXED); }
 int PortSpectator_ConsumesInput(void) { return __atomic_load_n(&sInputActive,__ATOMIC_RELAXED) && PortSpectator_Mode()!=0; }
 unsigned PortSpectator_FilterButtons(unsigned buttons) { return PortSpectator_ConsumesInput()?buttons&0x0009u:buttons; }
+void PortSpectator_ClearViews(void) { int i;for(i=0;i<4;i++)__atomic_store_n(&sAutoInput[i],0,__ATOMIC_RELAXED); }
+void PortSpectator_StopView(int view) { if(view>=0 && view<15){sViewCamera[view].live=0;sViewLastTick[view]=0;} }
+void PortSpectator_ViewInput(int player,int active,unsigned button) {
+    if(player<0 || player>=4)return;
+    __atomic_store_n(&sCycleButton[player],button,__ATOMIC_RELAXED);
+    __atomic_store_n(&sAutoInput[player],active!=0,__ATOMIC_RELAXED);
+}
+int PortSpectator_ConsumesPlayer(int player) {
+    return (player==0 && PortSpectator_ConsumesInput()) ||
+        (player>=0 && player<4 && __atomic_load_n(&sAutoInput[player],__ATOMIC_RELAXED));
+}
+unsigned PortSpectator_FilterPlayer(int player,unsigned buttons) {
+    if(player==0 && PortSpectator_ConsumesInput())return PortSpectator_FilterButtons(buttons);
+    return PortSpectator_ConsumesPlayer(player)?buttons&(0x0009u|__atomic_load_n(&sCycleButton[player],__ATOMIC_RELAXED)):buttons;
+}
+int PortSpectator_ViewCamera(int view,int mode,int player,const float *native_eye,const float *native_rot,
+    const float *targets,int count,float tan_y,float aspect,float *eye,float *rotation,float *zoom) {
+    Uint64 now;float dt;SpecInput input={0};int reset;
+    if(gPortResim || view<0 || view>=15)return 0;
+    now=SDL_GetTicksNS();dt=sViewLastTick[view]?(float)(now-sViewLastTick[view])/1e9f:1.f/60;sViewLastTick[view]=now;
+    reset=__atomic_load_n(&sReset,__ATOMIC_RELAXED);
+    if(reset!=sViewReset[view]){sViewReset[view]=reset;sViewCamera[view].live=0;}
+    if(!gPortOverlayOpen && PortSpectator_ConsumesPlayer(player))PortInput_SpectatorSlot(player,(float *)&input);
+    input.boost=0; /* L3 remains the next-view button when spectating after defeat. */
+    if(!spec_step(&sViewCamera[view],mode,0,PortSpectator_Speed(),sViewCamera[view].live?sViewCamera[view].zoom:100,dt,
+        native_eye,native_rot,targets,count,input,tan_y,aspect))return 0;
+    memcpy(eye,sViewCamera[view].eye,16);memcpy(rotation,sViewCamera[view].rotation,16);*zoom=sViewCamera[view].zoom/100;
+    return 1;
+}
 void PortSpectator_ResolveEye(const float *eye) { memcpy(sCamera.eye,eye,16); }
 int PortSpectator_Camera(const float *native_eye,const float *native_rot,const float *targets,int count,
                          float tan_y,float aspect,float *eye,float *rotation,float *zoom) {

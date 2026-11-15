@@ -6,3 +6,8 @@ cc -no-pie -std=c99 -Wall -Wextra -fsanitize=address,undefined port/tests/mods/t
 /tmp/tag-camera-bridge
 cc -g -O1 -fsanitize=address,undefined -fno-sanitize-recover=all port/tests/mods/test_mods.c port/src/gs/mods_lua.c -lm -lpthread -o /tmp/tag-mods-test
 /tmp/tag-mods-test
+c++ -std=c++17 -Iport/third_party/imgui $(pkg-config --cflags sdl3) port/tests/tag_hud_render.cpp \
+    port/third_party/imgui/imgui.cpp port/third_party/imgui/imgui_draw.cpp \
+    port/third_party/imgui/imgui_tables.cpp port/third_party/imgui/imgui_widgets.cpp \
+    $(pkg-config --libs sdl3) -pthread -o /tmp/tag-hud-render
+/tmp/tag-hud-render

@@ -10,6 +10,7 @@
 #include "sys/pad.h"
 #include "battle/tag_team.h"
 #include "battle/tag_options.h"
+#include "battle/tag_controls.h"
 #include "battle/tag_clash.h"
 #ifdef PORT
 #include "../../port/src/gs/tag_net.h"
@@ -350,6 +351,11 @@ void BtlCam_SetViewLayout(BtlCamView *view, s32 layout) {
 void BtlCam_InitViews(void) {
     s32 i;
 
+    /* Tag views use their own layouts; spectators still need valid templates. */
+    View_InitLayout(&gBtlCam->layouts[0], VIEW_LAYOUT_FULL);
+    View_InitLayout(&gBtlCam->layouts[1], VIEW_LAYOUT_LEFT);
+    View_InitLayout(&gBtlCam->layouts[2], VIEW_LAYOUT_RIGHT);
+
     if (TagTeam_Active()) {
         memset(nativeViews, 0, sizeof(nativeViews));
         for (i = 0; i < TagTeam_CameraCount(); i++) {
@@ -358,9 +364,6 @@ void BtlCam_InitViews(void) {
         }
         return;
     }
-    View_InitLayout(&gBtlCam->layouts[0], VIEW_LAYOUT_FULL);
-    View_InitLayout(&gBtlCam->layouts[1], VIEW_LAYOUT_LEFT);
-    View_InitLayout(&gBtlCam->layouts[2], VIEW_LAYOUT_RIGHT);
     if (Battle_IsSplitScreen()) {
         for (i = 0; i < 2; i++) {
             gBtlCam->views[i].index = i;
@@ -750,43 +753,55 @@ extern int Port_NetView(void); /* port/src/gs/net.c: the local player's view (0 
 #include "../../port/src/gs/presentation.h"
 /* A host presentation view. Never overwrite a fighter camera or replay state. */
 PORT_HOST static BtlCamView spectatorView;
-static s32 BtlCam_Spectator(void) {
-    extern int gPortResim;
-    extern int Port_AspectMilli(void);
+static s32 BtlCam_SpectatorView(BtlCamView *out,BtlCamView *native,s32 slot,s32 mode,s32 player,s32 full) {
+    extern int gPortResim,Port_AspectMilli(void);
     extern void BtlCharApi_GetBasePos(s32,Vec4 *);
     extern f32 BtlCharApi_GetHeight(s32),BtlCharApi_GetRadius(s32);
+    extern s32 BtlCharApi_GetHp(s32);
     Vec4 targets[TAG_TEAM_CAPACITY],eye,rot;
-    f32 zoom;
-    s32 i,count=TagTeam_Active()?TagTeam_Count():2;
-    if(gPortResim)return 0;
-    PortSpectator_SetInputActive(gBtlCam && !(Battle_GetWork()->flags&BATTLE_FLAG_PAUSE_MENU));
-    if(!PortSpectator_Mode() || !gBtlCam || !gBtlCam->cur || count<1 || count>TAG_TEAM_CAPACITY) return 0;
-    for(i=0;i<count;i++) {
-        s32 obj=BattleSide_GetObjId(i);
-        f32 h=BtlCharApi_GetHeight(obj),r=BtlCharApi_GetRadius(obj);
-        BtlCharApi_GetBasePos(obj,&targets[i]);
-        targets[i].y-=h*.5f;targets[i].w=fmaxf(fabsf(h)*.65f,fabsf(r))+2;
+    f32 zoom,tanY,aspect; s32 i,count=0,total=TagTeam_Active()?TagTeam_Count():2;
+    if(gPortResim || !mode || !native || total<1 || total>TAG_TEAM_CAPACITY)return 0;
+    *out=*native;
+    if(full)out->view=gBtlCam->layouts[0];
+    /* Use this viewport's physical shape, not an uninitialised/full-screen approximation. */
+    tanY=(out->view.scissorY1-out->view.scissorY0+1)*.5f/out->view.screenDist;
+    aspect=Port_AspectMilli()/1000.f*(out->view.scissorX1-out->view.scissorX0+1)/512.f*
+        448.f/(out->view.scissorY1-out->view.scissorY0+1);
+    if(!__builtin_isfinite(tanY) || !__builtin_isfinite(aspect) || tanY<=0 || aspect<=0)return 0;
+    for(i=0;i<total;i++) {
+        s32 obj=BattleSide_GetObjId(i);f32 h,r;
+        /* Overview frames live bodies, not eliminated or fused-away actors. */
+        if(mode==3 && ((TagTeam_Active() && (!TagTeam_IsAlive(i) || TagFusion_Hidden(i))) || BtlCharApi_GetHp(obj)<=0))continue;
+        h=BtlCharApi_GetHeight(obj);r=BtlCharApi_GetRadius(obj);
+        BtlCharApi_GetBasePos(obj,&targets[count]);
+        targets[count].y-=h*.5f;targets[count].w=fmaxf(fabsf(h)*.65f,fabsf(r))+2;count++;
     }
-    if(!PortSpectator_Camera((f32 *)&gBtlCam->cur->pos,(f32 *)&gBtlCam->cur->rot,(f32 *)targets,count,
-       224.f/gBtlCam->layouts[0].screenDist,Port_AspectMilli()/1000.f,(f32 *)&eye,(f32 *)&rot,&zoom))return 0;
-    /* Keep orbit cameras between their focus and the stage surface. */
-    if(PortSpectator_Mode()!=1) {
-        Vec4 focus=targets[PortSpectator_Target()<count?PortSpectator_Target():0];
-        if(PortSpectator_Mode()==3) {
+    if(!count)return 0;
+    if(slot<0) {
+        if(!PortSpectator_Camera((f32 *)&native->pos,(f32 *)&native->rot,(f32 *)targets,count,
+            tanY,aspect,(f32 *)&eye,(f32 *)&rot,&zoom))return 0;
+    } else if(!PortSpectator_ViewCamera(slot,mode,player,(f32 *)&native->pos,(f32 *)&native->rot,
+        (f32 *)targets,count,tanY,aspect,(f32 *)&eye,(f32 *)&rot,&zoom))return 0;
+    if(mode!=1) {
+        s32 target=slot<0?PortSpectator_Target():0;
+        Vec4 focus=targets[target<count?target:0];
+        if(mode==3) {
             focus.x=focus.y=focus.z=0;
             for(i=0;i<count;i++){focus.x+=targets[i].x/count;focus.y+=targets[i].y/count;focus.z+=targets[i].z/count;}
         }
         BtlCam_TraceStage(&eye,&eye,&focus,NULL,NULL);
-        PortSpectator_ResolveEye((f32 *)&eye);
+        if(slot<0)PortSpectator_ResolveEye((f32 *)&eye);
     }
-    spectatorView=*gBtlCam->cur;spectatorView.pos=eye;spectatorView.rot=rot;
-    spectatorView.view=gBtlCam->layouts[0];spectatorView.view.screenDist*=zoom;
-    View_BuildProjection(&spectatorView.view);
-    View_SetTransform(&spectatorView.view.world2view,&spectatorView.view.world2view2,&spectatorView.pos,&spectatorView.rot);
-    View_UpdateMatrices(&spectatorView.view,&spectatorView.pos);
-    gBtlCam->cur=&spectatorView;gBtlCamView=&spectatorView.view;
-    View_Apply(&spectatorView.view,1);
+    out->pos=eye;out->rot=rot;out->view.screenDist*=zoom;
+    View_BuildProjection(&out->view);
+    View_SetTransform(&out->view.world2view,&out->view.world2view2,&out->pos,&out->rot);
+    View_UpdateMatrices(&out->view,&out->pos);
     return 1;
+}
+static s32 BtlCam_Spectator(void) {
+    PortSpectator_SetInputActive(gBtlCam && !(Battle_GetWork()->flags&BATTLE_FLAG_PAUSE_MENU));
+    if(!gBtlCam || !BtlCam_SpectatorView(&spectatorView,gBtlCam->cur,-1,PortSpectator_Mode(),0,1))return 0;
+    gBtlCam->cur=&spectatorView;View_Apply(&spectatorView.view,1);return 1;
 }
 #endif
 /* Decides whether one full-screen view replaces the per-player views this frame; returns 1 if so. */
@@ -1089,21 +1104,46 @@ void TagOnline_EndDraw(void) {
 PORT_HOST static BtlCamView *spectatorSavedCurrent;
 PORT_HOST static View *spectatorSavedMatrix;
 PORT_HOST static s32 spectatorSavedSingle,spectatorDrawing;
+PORT_HOST static BtlCamView spectatorSavedViews[4];
+PORT_HOST static unsigned spectatorChanged;
 s32 PortSpectator_BeginDraw(void) {
     extern int gPortResim;
-    if(gPortResim)return 0;
-    if(TagNet_Active() && !TagNet_Observer()) {
-        PortSpectator_SetInputActive(0);return 0;
-    }
+    extern void BtlObj_UpdateVisibility(s32),BtlObj_FinishVisibility(s32);
+    s32 v,views=TagTeam_ViewCount(),role=TagNet_Role(),paused=(Battle_GetWork()->flags&BATTLE_FLAG_PAUSE_MENU)!=0;
+    if(gPortResim || !gBtlCam)return 0;
+    PortSpectator_ClearViews();spectatorChanged=0;
     spectatorSavedCurrent=gBtlCam->cur;spectatorSavedMatrix=gBtlCamView;
     spectatorSavedSingle=gBtlScene->singleView;
-    if(!BtlCam_Spectator())return 0;
-    spectatorDrawing=1;BtlScene_SetSingleView(1);return 1;
+    if(!(TagNet_Active() && !TagNet_Observer()) && PortSpectator_Mode() && BtlCam_Spectator()) {
+        spectatorDrawing=1;BtlScene_SetSingleView(1);return 1;
+    }
+    PortSpectator_SetInputActive(0);
+    if(!TagTeam_Active() || (TagNet_Active() && TagNet_Observer()))return 0;
+    for(v=0;v<views && v<4;v++) {
+        BtlCamView output,*native=battle_view(v);
+        s32 logical=TagNet_Active()?role:v,player=TagNet_Active()?0:v;
+        s32 mode=TagTeam_SpectatorMode(logical);
+        if(!mode){PortSpectator_StopView(logical);continue;}
+        PortSpectator_ViewInput(player,!paused,TagControl_Button(Port_TagOption(TAG_OPT_TARGET_BUTTON)));
+        if(BtlCam_SpectatorView(&output,native,logical,mode,player,views==1)) {
+            spectatorSavedViews[v]=*native;*native=output;spectatorChanged|=1u<<v;
+        }
+    }
+    if(!spectatorChanged){gBtlCamView=spectatorSavedMatrix;return 0;}
+    spectatorDrawing=1;BtlScene_SetSingleView(views==1);
+    for(v=0;v<views;v++)if(TagTeam_ViewVisible(v)) {
+        BtlCam_SelectView(v);BtlCam_ApplyView(0);BtlObj_UpdateVisibility(v);
+    }
+    BtlObj_FinishVisibility(views>1);
+    if(views==1){BtlCam_SelectView(0);BtlCam_ApplyView(1);return 1;}
+    return 2; /* Keep each split viewport rather than taking over the whole picture. */
 }
 void PortSpectator_EndDraw(void) {
+    s32 v;
     if(!spectatorDrawing)return;
+    for(v=0;v<4;v++)if(spectatorChanged&(1u<<v))*battle_view(v)=spectatorSavedViews[v];
     gBtlCam->cur=spectatorSavedCurrent;gBtlCamView=spectatorSavedMatrix;
     BtlScene_SetSingleView(spectatorSavedSingle);View_Apply(gBtlCamView,0);
-    spectatorDrawing=0;
+    spectatorDrawing=0;spectatorChanged=0;
 }
 #endif

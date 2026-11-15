@@ -91,7 +91,10 @@ static void spectator_test(void) {
     TagTeam_CycleSpectator(0);
     Port_TagTestCheck(TagTeam_ViewActor(0)==3,327);
     Port_TagOptionSet(TAG_OPT_SPECTATE_FALLEN,1);
-    TagTeam_CycleSpectator(0);TagTeam_CycleSpectator(0);TagTeam_CycleSpectator(0);
+    TagTeam_CycleSpectator(0);Port_TagTestCheck(TagTeam_SpectatorMode(0)==1,3251);
+    TagTeam_CycleSpectator(0);Port_TagTestCheck(TagTeam_SpectatorMode(0)==3,3252);
+    TagTeam_CycleSpectator(0);Port_TagTestCheck(TagTeam_ViewActor(0)==0 && TagTeam_SpectatorMode(0)==0,3253);
+    TagTeam_CycleSpectator(0);TagTeam_CycleSpectator(0);
     Port_TagTestCheck(TagTeam_ViewActor(0)==2,328);
     Port_TagTestCheck(TagTeam_TakeoverCandidate(0)<0 && !TagTeam_Takeover(0) &&
         TagTeam_ControlActor(0)==before,329);

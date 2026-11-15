@@ -44,6 +44,7 @@ s32 TagTeam_TakeoverCandidate(s32 player);
 s32 TagTeam_Takeover(s32 player);
 s32 TagTeam_Spectating(s32 view);
 void TagTeam_CycleSpectator(s32 view);
+s32 TagTeam_SpectatorMode(s32 view);
 s32 TagTeam_LockedOff(s32 actor);
 s32 TagTeam_HudTarget(s32 actor);
 s32 TagTeam_WinningActor(s32 team);

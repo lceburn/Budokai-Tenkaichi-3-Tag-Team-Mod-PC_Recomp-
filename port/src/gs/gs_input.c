@@ -968,14 +968,16 @@ void PortInput_StickView(int player, PortStickView *out) {
 }
 
 /* Physical local input only. Never read a replayed or remote fighter's pad. */
-void PortInput_Spectator(float *axes) {
+void PortInput_SpectatorSlot(int player,float *axes) {
     const bool *keys;SDL_Gamepad *pad;SDL_Window *window;int i;
     for(i=0;i<7;i++)axes[i]=0;
+    if(player<0 || player>=4)return;
     if(gPortOverlayOpen || gPortInputCapture ||
        gPortChatTyping || sKeySwallow)return;
     window=GsDraw_Window();
     if(!window || !(SDL_GetWindowFlags(window)&SDL_WINDOW_INPUT_FOCUS))return;
     keys=SDL_GetKeyboardState(NULL);
+    if(player==0) {
     axes[0]=(float)keys[SDL_SCANCODE_D]-keys[SDL_SCANCODE_A];
     axes[1]=(float)keys[SDL_SCANCODE_W]-keys[SDL_SCANCODE_S];
     axes[2]=(float)keys[SDL_SCANCODE_E]-keys[SDL_SCANCODE_Q];
@@ -984,9 +986,10 @@ void PortInput_Spectator(float *axes) {
     axes[5]=(float)(keys[SDL_SCANCODE_EQUALS]||keys[SDL_SCANCODE_KP_PLUS])-
                   (keys[SDL_SCANCODE_MINUS]||keys[SDL_SCANCODE_KP_MINUS]);
     axes[6]=keys[SDL_SCANCODE_LSHIFT]||keys[SDL_SCANCODE_RSHIFT];
-    pthread_once(&sLoadOnce,load);pad=pad_of(0);
+    }
+    pthread_once(&sLoadOnce,load);pad=pad_of(player);
     if(pad && !sSwallow) {
-        PortStickView sticks;PortInput_StickView(0,&sticks);
+        PortStickView sticks;PortInput_StickView(player,&sticks);
         axes[0]+=sticks.game[0][0];axes[1]-=sticks.game[0][1];
         axes[3]+=sticks.game[1][0];axes[4]-=sticks.game[1][1];
         axes[2]+=(float)SDL_GetGamepadButton(pad,SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)-SDL_GetGamepadButton(pad,SDL_GAMEPAD_BUTTON_LEFT_SHOULDER);
@@ -994,6 +997,7 @@ void PortInput_Spectator(float *axes) {
         axes[6]=axes[6] || SDL_GetGamepadButton(pad,SDL_GAMEPAD_BUTTON_LEFT_STICK);
     }
 }
+void PortInput_Spectator(float *axes) { PortInput_SpectatorSlot(0,axes); }
 
 /* Vibration.
  *
@@ -1333,8 +1337,8 @@ int Port_PadRead(int socket, unsigned char *data) {
     }
     clash_square(socket, &btn, &lx, &ly);
     press_age(socket, btn);
-    if(socket==0 && PortSpectator_ConsumesInput()) {
-        btn=PortSpectator_FilterButtons(btn);rx=ry=lx=ly=0x80;
+    if(PortSpectator_ConsumesPlayer(socket)) {
+        btn=PortSpectator_FilterPlayer(socket,btn);rx=ry=lx=ly=0x80;
     }
     memset(data, 0, 18);
     data[0] = (unsigned char)(~btn & 0xFF);       /* active low */

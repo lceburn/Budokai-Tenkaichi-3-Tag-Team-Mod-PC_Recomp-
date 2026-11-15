@@ -417,7 +417,9 @@ void TagHud_Draw() {
         float sc=std::min(sx,sy)*(s.views>=3&&!s.shared?0.73f:s.views==2&&!s.shared?0.78f:1.0f);
         float margin=6*sc;
         char label[96]; int controller=a.fusionBody>=0?a.fusionController:a.player;
-        if(view.spectating) snprintf(label,sizeof(label),Port_TagText("Watching %s"),TagHud_Name(a.chara));
+        if(view.spectatorMode==1)snprintf(label,sizeof(label),"%s",Port_TagText("Free camera"));
+        else if(view.spectatorMode==3)snprintf(label,sizeof(label),"%s",Port_TagText("Fight overview"));
+        else if(view.spectating) snprintf(label,sizeof(label),Port_TagText("Watching %s"),TagHud_Name(a.chara));
         else snprintf(label,sizeof(label),controller>=0?"P%d":"CPU %d",controller>=0?controller+1:actor+1);
         // Native panels use half scale in every split rectangle and full
         // scale only in the merged/fullscreen view.

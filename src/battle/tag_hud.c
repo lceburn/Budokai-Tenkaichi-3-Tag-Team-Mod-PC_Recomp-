@@ -112,13 +112,16 @@ void TagTeam_AfterUpdate(void) {
         h->controlActor = TagTeam_ControlActor(v);
         h->takeover = TagTeam_TakeoverCandidate(v);
         h->spectating = TagTeam_Spectating(v);
+        h->spectatorMode=TagTeam_SpectatorMode(v);
         if(TagNet_Active()) {
             s32 role=TagNet_Role();
+            h->spectatorMode=TagTeam_SpectatorMode(role);
             h->controlActor=role>=0 && role<10?TagTeam_ControlActor(role):-1;
             {extern int TagNet_Observer(void);h->spectating=TagNet_Observer() || TagTeam_Spectating(role);
             h->takeover=TagNet_Observer()?-1:TagTeam_TakeoverCandidate(role);}
         }
         h->reviveBody = h->spectating ? -1 : TagRevive_Nearby(h->actor);
+        if(s.shared)view=gBtlCamView;
         TagTeam_ViewRect(v, h->rect);
         if(TagNet_Active()){h->rect[0]=h->rect[1]=0;h->rect[2]=512;h->rect[3]=448;}
         for (i = 0; i < s.count; i++) {

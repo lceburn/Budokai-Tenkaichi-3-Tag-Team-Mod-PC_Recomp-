@@ -54,6 +54,11 @@ int main(void) {
         from[0]=to[0]=10;fraction=1;assert(!spec_triangle(from,to,a,b,c,&fraction));
     }
     assert(!memcmp(eye,savedEye,16) && !memcmp(rotation,savedRotation,16));
+    {
+        SpecCamera pair={0};float close[8]={-8,-10,0,10,8,-10,0,10};
+        spec_step(&pair,3,0,100,100,1.f/60,eye,rotation,close,2,input,.517f,1.777f);
+        assert(pair.distance<150);containment(&pair,close,2,1.777f);
+    }
     puts("PASS: four modes; frame-rate independent movement; 4x speed; zoom limits; target tracking/switching; 15-fighter framing at 4:3, 16:9 and 21:9; two-sided collision rays; unchanged native pose.");
     return 0;
 }

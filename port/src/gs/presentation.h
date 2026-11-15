@@ -21,6 +21,13 @@ void PortSpectator_EndBattle(void);
 void PortSpectator_SetInputActive(int active);
 int PortSpectator_ConsumesInput(void);
 unsigned PortSpectator_FilterButtons(unsigned buttons);
+int PortSpectator_ConsumesPlayer(int player);
+unsigned PortSpectator_FilterPlayer(int player,unsigned buttons);
+void PortSpectator_ClearViews(void);
+void PortSpectator_StopView(int view);
+void PortSpectator_ViewInput(int player,int active,unsigned cycle_button);
+int PortSpectator_ViewCamera(int view,int mode,int player,const float *native_eye,const float *native_rot,
+    const float *targets,int count,float tan_y,float aspect,float *eye,float *rotation,float *zoom);
 int PortSpectator_Camera(const float *native_eye,const float *native_rot,const float *targets,int count,
                          float tan_y,float aspect,float *eye,float *rotation,float *zoom);
 void PortSpectator_ResolveEye(const float *eye);

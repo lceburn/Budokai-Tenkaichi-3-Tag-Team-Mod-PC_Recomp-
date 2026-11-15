@@ -390,12 +390,13 @@ void Battle_Loop(void) {
             draw=0;BtlObj_UpdateVisibility(0);BtlObj_FinishVisibility(0);
         } }
 #endif
-        TagTeam_AfterUpdate();
 #ifdef PORT
-        { extern s32 PortSpectator_BeginDraw(void); if(PortSpectator_BeginDraw()) {
-            draw=0;BtlObj_UpdateVisibility(0);BtlObj_FinishVisibility(0);
-        } }
+        { extern s32 PortSpectator_BeginDraw(void); s32 camera=PortSpectator_BeginDraw();
+          if(camera==1){draw=0;BtlObj_UpdateVisibility(0);BtlObj_FinishVisibility(0);}
+          else if(camera==2)draw=1;
+        }
 #endif
+        TagTeam_AfterUpdate();
         if (Battle_IsSplitScreen() && draw) {
             Battle_DrawSplit();
         } else {
