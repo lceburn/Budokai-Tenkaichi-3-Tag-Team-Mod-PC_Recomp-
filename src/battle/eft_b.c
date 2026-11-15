@@ -304,6 +304,10 @@ void EftPrim_DrawBillboard(Vec4 *pos, Vec4 *color, s32 layer, s32 noDepth, u64 t
     EftBIVec ia;
     EftBIVec ib;
     f32 scale = gBtlCamView->screenDist;
+#ifdef PORT
+    extern f32 Port_CamScreenDist(void);
+    scale=Port_CamScreenDist();
+#endif
     s32 sw;
     s32 sh;
     s32 z;

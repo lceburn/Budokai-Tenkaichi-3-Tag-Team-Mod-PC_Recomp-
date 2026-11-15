@@ -24,11 +24,22 @@
 static BtlCamView nativeViews[TAG_TEAM_CAPACITY];
 static s32 nativeSharedActor = -1;
 static BtlCamView *battle_view(s32 i) { return TagTeam_Active() ? &nativeViews[i] : &gBtlCam->views[i]; }
+/* Script zoom changes the projection without changing the native lens field.
+   Effects must use the displayed lens for both clipping and billboard size. */
+f32 Port_CamScreenDist(void) {
+    View *v=gBtlCamView;
+#ifdef PORT
+    f32 scale=v->aspectY*v->unk258;
+    f32 distance=scale!=0?v->view2screen.m[1][1]/scale:0;
+    if(__builtin_isfinite(distance) && distance>0)return distance;
+#endif
+    return v->screenDist;
+}
 void BtlCam_GetFrustumSize(f32 *out) {
     View *v=gBtlCamView;
     out[0]=(v->scissorX1-v->scissorX0+1)*0.5f/v->aspectX;
     out[1]=(v->scissorY1-v->scissorY0+1)*0.5f/v->aspectY;
-    out[2]=v->screenDist;
+    out[2]=Port_CamScreenDist();
 }
 
 static void native_layout(BtlCamView *v, s32 split) {

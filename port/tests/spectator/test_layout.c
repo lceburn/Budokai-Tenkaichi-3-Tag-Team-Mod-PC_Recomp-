@@ -35,6 +35,20 @@ int main(void){
         for(i=0;i<4;i++)for(j=0;j<4;j++)assert(isfinite(view->view2screen.m[i][j]) && isfinite(view->view2clip.m[i][j]));
     }
     assert(memory.layouts[0].scissorX1==511 && memory.layouts[0].scissorY1==447);
+    { /* A screen-filling effect must reach the same edges at any mod zoom.
+         Previously its clip planes still used 433, leaving a 70% rectangle. */
+        BtlCamView camera={0};float size[3],base;
+        camera.view=memory.layouts[0];camera.index=0;gBtlCamView=&camera.view;
+        base=camera.view.screenDist;
+        BtlCam_PortZoom(&camera,700);BtlCam_GetFrustumSize(size);
+        assert(fabsf(size[2]-base*.7f)<.001f);
+        assert(fabsf((size[0]/size[2])*camera.view.view2screen.m[0][0]-256)<.001f);
+        assert(fabsf((size[1]/size[2])*camera.view.view2screen.m[1][1]-224)<.001f);
+        BtlCam_PortZoom(&camera,700);assert(fabsf(Port_CamScreenDist()-base*.7f)<.001f);
+        BtlCam_PortZoom(&camera,1500);assert(fabsf(Port_CamScreenDist()-base*1.5f)<.001f);
+        BtlCam_PortZoom(&camera,1000);assert(fabsf(Port_CamScreenDist()-base)<.001f);
+        camera.view.unk258=0;assert(Port_CamScreenDist()==base);
+    }
     for(v=0;v<4;v++)assert(nativeViews[v].index==v && nativeViews[v].view.screenDist>0);
     BtlCam_FollowPose(&spectatorView,4);assert(spectatorView.pos.x==102 && spectatorView.rot.y==.2f);
     BtlCam_FollowPose(&spectatorView,2);assert(spectatorView.pos.x==100);

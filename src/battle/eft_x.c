@@ -613,6 +613,10 @@ void EftPart10_DrawBillboard(Vec4 *pos, Vec4 *color, f32 w, s32 offX, s32 offY, 
     EftXIVec ic;
     EftXIVec id;
     f32 scale = gBtlCamView->screenDist;
+#ifdef PORT
+    extern f32 Port_CamScreenDist(void);
+    scale=Port_CamScreenDist();
+#endif
     s32 sw;
     s32 sh;
     s32 k;
