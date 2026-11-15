@@ -445,7 +445,8 @@ return {
     version = "1.0",
     author = "BT4decomp",
     description = "The fight's gauges, faces, timer and combo counter drawn anew at the screen's resolution: "
-        .. "portraits, curved health bars, ki cells, blast blades, status chips and a combo plate.",
+        .. "portraits, curved health bars, ki cells, blast blades, status chips and a combo plate. "
+        .. "Single view only; split-screen keeps its native gauges.",
     settings = {
         { id = "opacity", label = "Opacity", type = "slider", min = 30, max = 100, step = 5, default = 100 },
         { id = "timer", label = "Draw the timer", type = "toggle", default = true,
@@ -457,6 +458,9 @@ return {
     },
 
     on_hud = function(hud, game)
+        -- This script draws one pair of fighters. Keep every native viewport's
+        -- gauges until a per-viewport script layout is available.
+        if game.split then wasOn = false; last = nil; return end
         local now = game.time
         local on = game.battle and game.hud_shown
         if on and not wasOn then

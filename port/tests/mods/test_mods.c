@@ -309,6 +309,10 @@ int main(void) {
         CHECK(Mods_Info(i)->error[0] == '\0');
     }
     CHECK(Mods_HudRead(&sRead) && sRead.count >= 4);
+    sG.split = 1; Mods_Tick();
+    CHECK(Mods_HudHidden() == 0); /* split-screen retains all native gauges */
+    sG.split = 0; Mods_Tick();
+    CHECK((Mods_HudHidden() & 1) != 0); /* single-view Modern HUD replaces them */
 
     Mods_Lock();
     unload_all();

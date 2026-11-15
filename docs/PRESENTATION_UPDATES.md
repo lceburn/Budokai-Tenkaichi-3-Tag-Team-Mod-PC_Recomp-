@@ -12,7 +12,7 @@ Enable one camera mod at a time under F1 > Mods to make its sliders predictable.
 
 Tag-team gauges and combo widgets draw through separate native trees. Those trees now emit the same replacement scope markers as the original two-player HUD. A Lua HUD requesting `hide_game("gauges")` or `hide_game("combo")` suppresses those original pieces. The timer already uses the original scoped tree. Tag-team status information remains available.
 
-The bundled Modern HUD still presents the two-side script API. This change fixes overlapping original gauges; it does not redesign that script into a separate HUD for every tag-team viewport. Multi-view visual placement needs gameplay testing.
+The bundled Modern HUD still presents the two-side script API. It replaces the original gauges in single-view play; split-screen automatically keeps the native HUD so no player's gauges disappear. A Modern HUD for every split-screen viewport is a separate layout task.
 
 ## Spectator camera
 
