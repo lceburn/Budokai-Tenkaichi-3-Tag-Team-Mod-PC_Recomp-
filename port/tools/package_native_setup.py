@@ -27,6 +27,7 @@ def main():
     parser.add_argument('--launcher', type=Path, default=ROOT / 'port/build/Play.exe')
     parser.add_argument('--output', type=Path, default=ROOT / 'port/build/native-setup')
     parser.add_argument('--version', type=int, default=5, help='Native beta release number')
+    parser.add_argument('--release-sequence', type=int, default=1, help='Final numeric component of the GitHub release tag')
     parser.add_argument('--experimental-startup', action='store_true',
                         help='Package an explicitly experimental build; Setup must verify the startup checksum against the local ISO before installation.')
     args = parser.parse_args()
@@ -77,6 +78,15 @@ def main():
     upstream.take_fonts(payload, licenses)
     upstream.take_tbo_art(payload, licenses)
     upstream.take_example_mods(payload)
+    if windows:
+        # Installed checker runs from a temporary copy, before the engine starts.
+        subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--onefile', '--windowed',
+            '--name', 'CheckUpdates', '--distpath', str(payload),
+            '--workpath', str(ROOT / 'port/build/auto-update-freeze'),
+            '--specpath', str(ROOT / 'port/build/auto-update-freeze'),
+            '--paths', str(ROOT / 'port/tools'),
+            '--add-data', str(ROOT / 'port/tools/native_table_recipes.json') + os.pathsep + '.',
+            str(ROOT / 'port/tools/native_auto_update.py')], check=True)
     for source, name in [('LICENSE', 'AGPL-3.0.txt'), ('LICENSE-MIT', 'upstream-MIT.txt'),
         ('port/third_party/imgui/LICENSE.txt', 'dear-imgui.txt'),
         ('port/third_party/newlib_libm/COPYING.NEWLIB', 'newlib.txt'),
@@ -100,7 +110,7 @@ def main():
     manifest = {p.relative_to(payload).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                 for p in sorted(payload.rglob('*')) if p.is_file() and p.name != 'manifest.json'}
     release = dict(version=f'beta.{args.version}' + ('-experimental' if args.experimental_startup else ''),
-                   platform=args.platform+'-x86_64')
+                   platform=args.platform+'-x86_64', release_sequence=args.release_sequence)
     if args.experimental_startup:
         release.update(experimental=True, startup_verification='install-time-checksum')
     (payload / 'release.json').write_text(json.dumps(release)+'\n')

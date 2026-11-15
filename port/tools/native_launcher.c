@@ -30,6 +30,31 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR args, int show
     if (wcslen(root) > 32600 || !SetCurrentDirectoryW(root))
         return error(L"Could not open the installation folder. / No se puede abrir la carpeta de instalación.");
 
+    /* Run a temporary copy so the updater can replace this launcher and itself.
+       The helper starts Play.exe --skip-update after completing or declining. */
+    if (wcscmp(args, L"--skip-update") != 0 && wcslen(root) < 15000) {
+        wchar_t helper[32768], temp[32768], copy[32768];
+        swprintf(helper,32768,L"%ls\\CheckUpdates.exe",root);
+        if (GetFileAttributesW(helper) != INVALID_FILE_ATTRIBUTES && GetTempPathW(32768,temp) && wcslen(temp)<32000) {
+            swprintf(copy,32768,L"%lsTagTeam-UpdateRunner.exe",temp);
+            if (CopyFileW(helper,copy,FALSE)) {
+                if(wcslen(copy)+wcslen(root)+100>=32772) {
+                    DeleteFileW(copy);return error(L"The installation path is too long for the update helper.");
+                }
+                swprintf(command,32772,L"\"%ls\" --game-folder \"%ls\" %ls",copy,root,
+                    wcscmp(args,L"--check-updates")==0?L"--check":L"--launch");
+                start.cb=sizeof(start);
+                if(CreateProcessW(copy,command,NULL,NULL,FALSE,CREATE_NO_WINDOW,NULL,root,&start,&process)) {
+                    CloseHandle(process.hThread);CloseHandle(process.hProcess);
+                    return 0;
+                }
+            } else if(GetLastError()==ERROR_SHARING_VIOLATION) {
+                return error(L"An update check is already running. Finish it before starting another copy.");
+            }
+            DeleteFileW(copy);
+        }
+    }
+
     /* Never inherit developer/test flags, or paths to another installation. */
     environment = GetEnvironmentStringsW();
     if (!environment) return error(L"Could not read the process environment.");

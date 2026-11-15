@@ -60,6 +60,7 @@ class NativePackageTests(unittest.TestCase):
             for name in ('miniaudio', 'miniz', 'lua', 'monocypher'):
                 self.assertIn('licenses/' + name + '.txt', manifest)
             self.assertIn('mods/modern_hud/mod.lua', manifest)
+            self.assertIn('CheckUpdates.exe', manifest)
             self.assertEqual((payload / 'engine/TagTeam.dat').read_bytes()[:4], b'TTMD')
             release = json.loads((payload / 'release.json').read_text())
             self.assertEqual(release.get('experimental', False), experimental)

@@ -673,7 +673,9 @@ void Hud_Draw(void) {
                 { extern s32 TagOnline_PresentationActor(s32); actor=TagOnline_PresentationActor(TagTeam_ViewActor(v)); }
                 {
                     extern s32 TagTeam_HudTarget(s32);
+                    Port_GsMarker(PORT_HUD_GAUGE_BEGIN);
                     HudGauge_DrawNative(v,actor,TagTeam_HudTarget(actor),shared);
+                    Port_GsMarker(PORT_HUD_GAUGE_END);
                 }
             }
             Port_GsMarker(PORT_2D_CENTER);
@@ -937,8 +939,10 @@ static void Hud_NativeWidgetsDraw(s32 view,s32 actor,s32 shared) {
     Hud_ClearTexMarks();
     HudPrompt_ClearIconMarks();
     Port_GsMarker(TagTeam_HudMarker(view,shared,0));
+    Port_GsMarker(PORT_HUD_COMBO_BEGIN);
     HudCombo_SelectSide(0); HudNode_Update(nativeComboNode[view]); HudNode_Draw(nativeComboNode[view],0);
     HudCombo_DrawText();
+    Port_GsMarker(PORT_HUD_COMBO_END);
     /* Prompt rows remain at the bottom in the tall two-player layout too. */
     Port_GsMarker(TagTeam_HudMarker(view,shared,1));
     HudPrompt_SelectSide(0); HudNode_Update(nativePromptNode[view]); HudNode_Draw(nativePromptNode[view],0);

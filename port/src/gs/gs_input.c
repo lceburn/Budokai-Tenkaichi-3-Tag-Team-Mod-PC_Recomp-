@@ -1,3 +1,4 @@
+#include "presentation.h"
 /*
  * Controller input for the windowed PC build: fills the game's pad buffer (the libpad2 layout the game reads in
  * src/sys/pad.c) from the keyboard and from SDL gamepads, through bindings the settings window (ui.cpp) edits and
@@ -966,6 +967,34 @@ void PortInput_StickView(int player, PortStickView *out) {
     }
 }
 
+/* Physical local input only. Never read a replayed or remote fighter's pad. */
+void PortInput_Spectator(float *axes) {
+    const bool *keys;SDL_Gamepad *pad;SDL_Window *window;int i;
+    for(i=0;i<7;i++)axes[i]=0;
+    if(gPortOverlayOpen || gPortInputCapture ||
+       gPortChatTyping || sKeySwallow)return;
+    window=GsDraw_Window();
+    if(!window || !(SDL_GetWindowFlags(window)&SDL_WINDOW_INPUT_FOCUS))return;
+    keys=SDL_GetKeyboardState(NULL);
+    axes[0]=(float)keys[SDL_SCANCODE_D]-keys[SDL_SCANCODE_A];
+    axes[1]=(float)keys[SDL_SCANCODE_W]-keys[SDL_SCANCODE_S];
+    axes[2]=(float)keys[SDL_SCANCODE_E]-keys[SDL_SCANCODE_Q];
+    axes[3]=(float)keys[SDL_SCANCODE_RIGHT]-keys[SDL_SCANCODE_LEFT];
+    axes[4]=(float)keys[SDL_SCANCODE_UP]-keys[SDL_SCANCODE_DOWN];
+    axes[5]=(float)(keys[SDL_SCANCODE_EQUALS]||keys[SDL_SCANCODE_KP_PLUS])-
+                  (keys[SDL_SCANCODE_MINUS]||keys[SDL_SCANCODE_KP_MINUS]);
+    axes[6]=keys[SDL_SCANCODE_LSHIFT]||keys[SDL_SCANCODE_RSHIFT];
+    pthread_once(&sLoadOnce,load);pad=pad_of(0);
+    if(pad && !sSwallow) {
+        PortStickView sticks;PortInput_StickView(0,&sticks);
+        axes[0]+=sticks.game[0][0];axes[1]-=sticks.game[0][1];
+        axes[3]+=sticks.game[1][0];axes[4]-=sticks.game[1][1];
+        axes[2]+=(float)SDL_GetGamepadButton(pad,SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)-SDL_GetGamepadButton(pad,SDL_GAMEPAD_BUTTON_LEFT_SHOULDER);
+        axes[5]+=sticks.trigger[1]-sticks.trigger[0];
+        axes[6]=axes[6] || SDL_GetGamepadButton(pad,SDL_GAMEPAD_BUTTON_LEFT_STICK);
+    }
+}
+
 /* Vibration.
  *
  * The game drives the DualShock 2's two motors itself: every frame Pad_Update (src/sys/pad.c) ends with
@@ -1304,6 +1333,9 @@ int Port_PadRead(int socket, unsigned char *data) {
     }
     clash_square(socket, &btn, &lx, &ly);
     press_age(socket, btn);
+    if(socket==0 && PortSpectator_ConsumesInput()) {
+        btn=PortSpectator_FilterButtons(btn);rx=ry=lx=ly=0x80;
+    }
     memset(data, 0, 18);
     data[0] = (unsigned char)(~btn & 0xFF);       /* active low */
     data[1] = (unsigned char)(~(btn >> 8) & 0xFF);

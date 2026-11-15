@@ -1515,6 +1515,10 @@ void Mods_Camera(void) {
         lua_createtable(L, 0, 5); /* (1: the camera, kept to read back what the script changed in it) */
         t = lua_gettop(L);
         set_int(L, "side", cam.side + 1);
+        set_int(L, "view", cam.view + 1);
+        set_int(L, "actor", cam.actor + 1);
+        set_int(L, "hp", cam.hp);
+        set_int(L, "foe_hp", cam.foeHp);
         set_bool(L, "cut", cam.cut);
         set_vec(L, "pos", cam.pos);
         set_vec(L, "rot", cam.rot);
@@ -1541,6 +1545,7 @@ void Mods_Camera(void) {
             lua_getfield(L, r, "collide");
             if (lua_isboolean(L, -1)) {
                 cam.collide = lua_toboolean(L, -1);
+                changed = 1;
             }
             lua_pop(L, 1);
         }

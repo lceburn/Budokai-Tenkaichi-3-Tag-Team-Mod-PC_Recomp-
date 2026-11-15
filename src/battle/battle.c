@@ -391,12 +391,18 @@ void Battle_Loop(void) {
         } }
 #endif
         TagTeam_AfterUpdate();
+#ifdef PORT
+        { extern s32 PortSpectator_BeginDraw(void); if(PortSpectator_BeginDraw()) {
+            draw=0;BtlObj_UpdateVisibility(0);BtlObj_FinishVisibility(0);
+        } }
+#endif
         if (Battle_IsSplitScreen() && draw) {
             Battle_DrawSplit();
         } else {
             Battle_Draw();
         }
 #ifdef PORT
+        { extern void PortSpectator_EndDraw(void); PortSpectator_EndDraw(); }
         { extern void TagOnline_EndDraw(void); TagOnline_EndDraw(); }
 #endif
         TagChallenge_Draw();

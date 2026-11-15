@@ -26,9 +26,11 @@ return {
     },
 
     on_camera = function(cam, game)
-        local s = shown[cam.side]
+        local key = cam.view or cam.side
+        local s = shown[key]
+        if s and s.actor ~= cam.actor then s = nil end
         if cam.cut then
-            shown[cam.side] = nil -- (after the cut, start again from the game's pose)
+            shown[key] = nil -- (after the cut, start again from the game's pose)
             return
         end
         -- the wanted pose: the game's, moved along the line from the point it looks at
@@ -46,8 +48,8 @@ return {
             s.rot.y = s.rot.y + turn(s.rot.y, cam.rot.y) * k
             s.rot.z = s.rot.z + turn(s.rot.z, cam.rot.z) * k
         else
-            s = { pos = want, rot = { x = cam.rot.x, y = cam.rot.y, z = cam.rot.z } }
-            shown[cam.side] = s
+            s = { actor = cam.actor, pos = want, rot = { x = cam.rot.x, y = cam.rot.y, z = cam.rot.z } }
+            shown[key] = s
         end
         cam.pos.x, cam.pos.y, cam.pos.z = s.pos.x, s.pos.y, s.pos.z
         cam.rot.x, cam.rot.y, cam.rot.z = s.rot.x, s.rot.y, s.rot.z

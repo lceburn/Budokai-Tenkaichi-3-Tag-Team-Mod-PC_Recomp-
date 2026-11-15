@@ -14,9 +14,9 @@ import threading
 import native_setup as setup
 import native_tables
 
-ROOT_FILES = {'Play.exe', 'Play.sh', 'Read me.txt', 'Tag Team Mod Logo.png',
+ROOT_FILES = {'Play.exe', 'Play.sh', 'CheckUpdates.exe', 'Read me.txt', 'Tag Team Mod Logo.png',
               'a11y_es.txt', 'release.json', 'installation.json'}
-ROOT_DIRS = {'engine', 'fonts', 'licenses', 'translations', 'tbo', 'lang'}
+ROOT_DIRS = {'engine', 'fonts', 'licenses', 'translations', 'tbo', 'lang', 'mods'}
 TABLES = {'gamedata/native-tables0.bin', 'gamedata/native-tables1.bin'}
 
 
@@ -155,9 +155,12 @@ def update(target, payload=setup.PAYLOAD, iso=None, progress=print):
         progress('Checking update / Comprobando actualización...')
         # Validate the entire payload first. Script examples are installed by a
         # fresh Setup, but mods/ belongs to the player after installation.
-        # An update must neither overwrite edited scripts nor claim ownership.
-        files={name:digest for name,digest in setup.payload_files(payload).items()
-               if not name.startswith('mods/')}
+        # Only unchanged scripts already owned by this installation are upgraded.
+        # Edited and third-party scripts are neither replaced nor claimed.
+        files={name:checksum for name,checksum in setup.payload_files(payload).items()
+               if not name.startswith('mods/') or
+               (name in state['files'] and (target/name).is_file() and
+                digest(target/name)==state['files'][name])}
         release=json.loads((payload/'release.json').read_text(encoding='utf-8'))
         if release.get('platform')!=platform+'-x86_64':raise ValueError('Wrong updater platform.')
         for name in files:

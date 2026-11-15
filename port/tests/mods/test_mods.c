@@ -94,6 +94,7 @@ int main(void) {
     put("camera", "mod.lua",
         "return { on_camera = function(cam, game)\n"
         "  if cam.cut then return end\n"
+        "  assert(cam.view == 4 and cam.actor == 8 and cam.hp == 12000 and cam.foe_hp == 9000)\n"
         "  cam.pos.x = cam.pos.x + 1; cam.rot.z = 0.25\n"
         "end }\n");
     put("camera_nan", "mod.lua", "return { on_camera = function(cam) return { pos = { x = 0/0, y = 0, z = 0 }, rot = cam.rot } end }\n");
@@ -217,6 +218,7 @@ int main(void) {
     memset(&sIn, 0, sizeof(sIn));
     sIn.pos[0] = 10.0f;
     sIn.rot[1] = 1.0f;
+    sIn.view = 3; sIn.actor = 7; sIn.hp = 12000; sIn.foeHp = 9000;
     Mods_Camera();
     CHECK(sSet && sOut.pos[0] == 11.0f && sOut.rot[2] == 0.25f && sOut.rot[1] == 1.0f);
     CHECK(mod("camera_nan")->error[0] == '\0');
@@ -290,6 +292,8 @@ int main(void) {
     int moved = 0;
     for (i = 0; i < 100; i++) {
         Mods_Tick();
+        sIn.view = i % 2 ? 14 : 3;
+        sIn.side = i % 2; sIn.actor = i % 2 ? 12 : 7;
         sIn.cut = i % 40 == 39;
         sIn.rot[1] = (float)i * 0.01f;
         sSet = 0;

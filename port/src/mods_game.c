@@ -20,6 +20,7 @@
 
 #include "gs/mods.h"
 #include "port_addr.h"
+#include "../../include/battle/tag_capacity.h"
 
 #if (defined(__x86_64__) || defined(__aarch64__)) && defined(__clang__)
 #undef __ptr32 /* the Windows headers of mingw define these two away */
@@ -100,6 +101,8 @@ int PortMods_CamGet(ModsCam *out) {
 void PortMods_CamSet(const ModsCam *cam) {
     memcpy(sCam.pos, cam->pos, sizeof(sCam.pos));
     memcpy(sCam.rot, cam->rot, sizeof(sCam.rot));
+    sCam.zoom = cam->zoom;
+    sCam.collide = cam->collide;
     sCamOut = 1;
 }
 
@@ -107,26 +110,26 @@ void PortMods_CamSet(const ModsCam *cam) {
    memory, just copied from the side's fighter camera. */
 /* What the scripts asked of this side's camera besides its pose, for src/battle/btl_cam.c: the zoom (thousandths,
    1000 the game's) and whether the pose is to be kept out of the stage. The game's values when no mod changed it. */
-static int sZoom[2] = {1000, 1000}, sCollide[2];
+static int sZoom[TAG_ACTOR_CAPACITY], sCollide[TAG_ACTOR_CAPACITY];
 int Port_ModsCamZoom(int side) {
-    return side >= 0 && side < 2 ? sZoom[side] : 1000;
+    return side >= 0 && side < TAG_ACTOR_CAPACITY && sZoom[side] ? sZoom[side] : 1000;
 }
 int Port_ModsCamCollide(int side) {
-    return side >= 0 && side < 2 ? sCollide[side] : 0;
+    return side >= 0 && side < TAG_ACTOR_CAPACITY ? sCollide[side] : 0;
 }
 
 void Port_ModsCamera(int side, int objId, int pos, int rot) {
     static int synctest = -1;
     uint8_t GAME_PTR chr;
 
-    if (side >= 0 && side < 2) {
+    if (side >= 0 && side < TAG_ACTOR_CAPACITY) {
         sZoom[side] = 1000;
         sCollide[side] = 0;
     }
     if (synctest < 0) {
         synctest = getenv("BT3_SYNCTEST") != NULL;
     }
-    if (gPortResim || synctest || side < 0 || side > 1 || !Mods_WantCamera()) {
+    if (gPortResim || synctest || side < 0 || side >= TAG_ACTOR_CAPACITY || !Mods_WantCamera()) {
         return;
     }
     chr = (uint8_t GAME_PTR)BtlChar_FindByObjId(objId);
@@ -135,6 +138,18 @@ void Port_ModsCamera(int side, int objId, int pos, int rot) {
     }
     memset(&sCam, 0, sizeof(sCam));
     sCam.side = side;
+    sCam.view = side;
+    {
+        extern int TagTeam_Active(void), TagTeam_ViewActor(int), TagTeam_CameraActor(int);
+        extern int TagTeam_Team(int), TagTeam_Target(int), BattleSide_GetObjId(int);
+        extern int BtlCharApi_GetHp(int);
+        int foe;
+        sCam.actor = TagTeam_Active() ? TagTeam_CameraActor(TagTeam_ViewActor(side)) : side;
+        if (TagTeam_Active()) sCam.side = TagTeam_Team(sCam.actor);
+        foe = TagTeam_Active() ? TagTeam_Target(sCam.actor) : 1-side;
+        sCam.hp = BtlCharApi_GetHp(objId);
+        sCam.foeHp = foe >= 0 ? BtlCharApi_GetHp(BattleSide_GetObjId(foe)) : -1;
+    }
     /* the game's own camera work: cuts, fixed and frozen cameras (fighter flags 0xCC, 0xCD, 0xDC, 0xB8) */
     sCam.cut = ChrCam_IsCutActive(chr) || BtlChar_TestFlag(chr, 0xCC) || BtlChar_TestFlag(chr, 0xDC) ||
                BtlChar_TestFlag(chr, 0xB8) || BtlChar_TestFlag(chr, 0xCD);

@@ -99,7 +99,9 @@ return {
     },
 
     on_camera = function(cam, game)
-        local c = sides[cam.side]
+        local key = cam.view or cam.side
+        local c = sides[key]
+        if not c or c.actor ~= cam.actor then c = { actor = cam.actor }; sides[key] = c end
         if cam.cut then
             reset(c)
             return
@@ -110,7 +112,8 @@ return {
         c.clock = (c.clock or 0) + 1
 
         -- the reactions: health fell on this side (hit), or on the other (a hit landed)
-        local hp, foe = hp_of(game, cam.side), hp_of(game, 3 - cam.side)
+        local hp = cam.hp or hp_of(game, cam.side)
+        local foe = cam.foe_hp or hp_of(game, 3 - cam.side)
         if c.have and hp >= 0 and (c.hp or -1) >= 0 and hp < c.hp then
             local dmg = c.hp - hp
             c.shake, c.shakeAmp = 1, math.min(1, 0.35 + dmg / 4000)

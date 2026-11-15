@@ -133,4 +133,21 @@ class UpdateTests(unittest.TestCase):
                 self.unchanged(target,keep)
 
 
+    def test_owned_unchanged_bundled_camera_is_updated_but_edited_copy_is_kept(self):
+        for edited in (False,True):
+            with self.subTest(edited=edited),tempfile.TemporaryDirectory() as folder:
+                target,payload,keep=self.fixture(Path(folder));name='mods/modern_camera/mod.lua'
+                dest=target/name;dest.parent.mkdir(parents=True);dest.write_bytes(b'original camera')
+                state_path=target/'installation.json';state=json.loads(state_path.read_text())
+                state['files'][name]=updater.digest(dest);state_path.write_text(json.dumps(state))
+                if edited:dest.write_bytes(b'custom camera')
+                source=payload/name;source.parent.mkdir(parents=True);source.write_bytes(b'fixed camera')
+                manifest_path=payload/'manifest.json';manifest=json.loads(manifest_path.read_text())
+                manifest[name]=updater.digest(source);manifest_path.write_text(json.dumps(manifest))
+                with patch.object(setup,'platform_name',return_value='windows'):
+                    updater.update(target,payload,progress=lambda _:None)
+                self.assertEqual(dest.read_bytes(),b'custom camera' if edited else b'fixed camera')
+                self.unchanged(target,keep)
+
+
 if __name__=='__main__':unittest.main()

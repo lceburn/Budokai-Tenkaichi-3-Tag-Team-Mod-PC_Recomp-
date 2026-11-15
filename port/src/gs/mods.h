@@ -24,6 +24,7 @@ typedef struct ModsGame {
 /* One side's camera as BtlCam_UpdateView is about to build it (src/battle/btl_cam.c). */
 typedef struct ModsCam {
     int side;
+    int view, actor, hp, foeHp; /* independent view history and the actual camera owner's health */
     int cut;       /* a technique's or a transformation's cut, a fixed or a scripted camera: the game's framing */
     float pos[3];  /* camera position */
     float rot[3];  /* Euler angles (radians), as src/sys/vu0_b_c.c Vu0View_SetRotTrans takes them */

@@ -1,3 +1,4 @@
+#include "presentation.h"
 // The settings window of the PC build: Dear ImGui over the finished picture. F1 opens and closes it, or START + SELECT
 // of a controller, or the key and button of its Controls list (gs_input.c: PortInput_Hotkey).
 // Everything it shows lives elsewhere (ui.h): the renderer's settings in gs_gpu.c, the bindings in gs_input.c.
@@ -127,6 +128,7 @@ static Uint64 sCapUntil;                       // ... until then: a controller h
 static bool sQuit;                             // the question before the game closes is up
 static bool sQuitNo;                           // ... and Esc answered it: no
 static bool sPadHold;                          // the controller does not work the window: a binding is waited for, or its button is still down
+static void spectator_tab(void);
 static int sTab;                               // the settings tab that is open (the shoulder buttons go to its neighbours)
 static bool sPadTab;                           // the shoulder buttons changed the tab this frame
 static SDL_GPUDevice *sDevice;
@@ -1755,8 +1757,9 @@ static void misc_tab(void) {
             Port_SettingSave("update_check", sUpdCheck);
             Port_SettingsWrite();
         }
-        ImGui::SetItemTooltip("Once per start, ask GitHub for the newest release and say so if it is newer than this one.\n"
-                              "Nothing is downloaded until you press Update now (at the top of this window).");
+        ImGui::SetItemTooltip(getenv("BT3_TAG_TEAM") ?
+            "Play.exe checks this mod's signed GitHub updates before starting. You choose whether to install.\nChanges to this setting apply on the next launch; your saves and custom content are kept." :
+            "Once per start, ask GitHub for the newest release and say so if it is newer than this one.\nNothing is downloaded until you press Update now (at the top of this window).");
         ImGui::SameLine();
         ImGui::TextDisabled("(installed: %s)", Update_Version()); // (PR #107: the version that is running)
         ImGui::SetItemTooltip("The version of Tenkaichi3Decomp currently running (\"dev\": built locally, never offered updates).");
@@ -2328,7 +2331,7 @@ static void build(void) {
         open = false;
     }
     if (sForceTab < 0 && (pad_pressed(ImGuiKey_GamepadL1) || pad_pressed(ImGuiKey_GamepadR1))) {
-        const int tabCount = getenv("BT3_TAG_TEAM") ? 11 : 10;
+        const int tabCount = getenv("BT3_TAG_TEAM") ? 12 : 11;
         sForceTab = (sTab + (ImGui::IsKeyPressed(ImGuiKey_GamepadL1, false) ? tabCount - 1 : 1)) % tabCount;
         sPadTab = true;
     }
@@ -2427,6 +2430,7 @@ static void build(void) {
             if (tab("Misc", 6)) { misc_tab(); ImGui::EndTabItem(); }
             if (tab("Online", 7)) { online_tab(); ImGui::EndTabItem(); }
             if (tab("Mods", 8)) { ModsUi_Tab(); ImGui::EndTabItem(); }
+            if (tab("Spectator", getenv("BT3_TAG_TEAM") ? 11 : 10)) { spectator_tab(); ImGui::EndTabItem(); }
             if (tab("Tech", 9)) { tech_tab(); ImGui::EndTabItem(); }
             if (getenv("BT3_TAG_TEAM") && tab(Port_TagText("Mod Settings"), 10)) {
                 TagHud_Settings();
@@ -2660,6 +2664,31 @@ static void meter_draw(void) {
 
 // The name of an added stage or song as text, in the rectangle the menu gives (the strip images' place): cream
 // letters with a dark outline, as tall as the rectangle allows, centred for a stage and from the left for a song.
+static void spectator_tab(void) {
+    if(TagNet_Active() && !TagNet_Observer()) {
+        ImGui::TextWrapped("Spectator camera controls are available when you join the room as an observer.");
+        return;
+    }
+    int mode=PortSpectator_Mode();
+    const char *modes[]={"Game camera","Free camera","Follow fighter","Fight overview"};
+    for(int n=0;n<4;n++)if(ImGui::RadioButton(Port_TagText(modes[n]),mode==n)){PortSpectator_SetMode(n);mode=n;}
+    ImGui::BeginDisabled(mode==0);
+    if(mode==2) {
+        int actor=PortSpectator_Target()+1,count=PortSpectator_Count();
+        if(actor>count){actor=count;PortSpectator_SetTarget(actor-1);}
+        if(ImGui::SliderInt(Port_TagText("Fighter"),&actor,1,count))PortSpectator_SetTarget(actor-1);
+    }
+    int speed=PortSpectator_Speed();
+    if(ImGui::SliderInt(Port_TagText("Camera speed"),&speed,25,400,"%d%%"))PortSpectator_SetSpeed(speed);
+    int zoom=PortSpectator_Zoom();
+    if(ImGui::SliderInt(Port_TagText("Camera zoom"),&zoom,100,300,"%d%%",ImGuiSliderFlags_AlwaysClamp))PortSpectator_SetZoom(zoom);
+    if(ImGui::Button(Port_TagText("Reset camera")))PortSpectator_ResetCamera();
+    ImGui::EndDisabled();ImGui::Separator();
+    ImGui::TextWrapped("%s",Port_TagText("Close F1 to control the camera. WASD: move; Q/E: descend/ascend; arrows: turn; Shift: accelerate; +/-: zoom."));
+    ImGui::TextWrapped("%s",Port_TagText("Controller: left stick moves, right stick turns, L1/R1 descend/ascend, L2/R2 zoom, L3 accelerates."));
+    ImGui::TextWrapped("%s",Port_TagText("Camera controls replace your local fighter controls during battle. Start still opens the pause menu."));
+}
+
 static void name_text(ImDrawList *dl, const char *text, float x, float y, float w, float h, bool centre) {
     ImFont *font = ImGui::GetFont();
     float size = h * (centre ? 0.42f : 0.72f);
