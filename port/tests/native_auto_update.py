@@ -15,6 +15,10 @@ import update_key
 
 
 class AutoUpdateTests(unittest.TestCase):
+    def test_native_downloader_requires_https_without_embedded_credentials(self):
+        for url in ('http://github.com/file','https://user:password@github.com/file','https://github.com:80/file'):
+            with self.subTest(url=url),self.assertRaises(ValueError):auto.fetch_windows(url,100)
+
     def release(self, tag='v0.1.0-beta.8-experimental.1'):
         name='Tag-Team-Recomp-Beta.8-Experimental-Updater-Windows.zip'
         return {'tag_name':tag,'assets':[{'name':n,'size':100,'browser_download_url':auto.PREFIX+tag+'/'+n} for n in (name,name+'.sig')]}

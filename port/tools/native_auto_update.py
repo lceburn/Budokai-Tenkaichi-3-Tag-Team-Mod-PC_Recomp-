@@ -2,11 +2,14 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import tempfile
+import traceback
 import urllib.request
+from urllib.parse import urlsplit
 import zipfile
 
 import native_setup as setup
@@ -52,12 +55,60 @@ def choose_release(releases, current):
 
 
 def fetch(url, limit):
+    if os.name == 'nt':
+        return fetch_windows(url, limit)
     request = urllib.request.Request(url, headers={'User-Agent': 'TagTeam-native-updater', 'Accept': 'application/vnd.github+json' if url == API else 'application/octet-stream'})
     with urllib.request.urlopen(request, timeout=12) as response:
         data = response.read(limit+1)
     if len(data) > limit:
         raise ValueError('Update download exceeds the permitted size.')
     return data
+
+
+def fetch_windows(url, limit):
+    """Use Windows TLS and certificate trust; frozen Python's OpenSSL is not required."""
+    import ctypes as c
+    address=urlsplit(url)
+    if address.scheme!='https' or address.port not in (None,443) or address.username or address.password:
+        raise ValueError('Updates require an HTTPS URL.')
+    win=c.WinDLL('winhttp',use_last_error=True)
+    handle,dword,text=c.c_void_p,c.c_ulong,c.c_wchar_p
+    def bind(name,result,args):
+        fn=getattr(win,name);fn.restype=result;fn.argtypes=args;return fn
+    opened=bind('WinHttpOpen',handle,[text,dword,text,text,dword])
+    connect=bind('WinHttpConnect',handle,[handle,text,c.c_ushort,dword])
+    request=bind('WinHttpOpenRequest',handle,[handle,text,text,text,text,c.c_void_p,dword])
+    timeouts=bind('WinHttpSetTimeouts',c.c_int,[handle,c.c_int,c.c_int,c.c_int,c.c_int])
+    send=bind('WinHttpSendRequest',c.c_int,[handle,text,dword,c.c_void_p,dword,dword,c.c_size_t])
+    receive=bind('WinHttpReceiveResponse',c.c_int,[handle,c.c_void_p])
+    headers=bind('WinHttpQueryHeaders',c.c_int,[handle,dword,text,c.c_void_p,c.POINTER(dword),c.POINTER(dword)])
+    read=bind('WinHttpReadData',c.c_int,[handle,c.c_void_p,dword,c.POINTER(dword)])
+    close=bind('WinHttpCloseHandle',c.c_int,[handle])
+    handles=[]
+    def checked(value):
+        if not value:raise c.WinError(c.get_last_error())
+        return value
+    try:
+        session=checked(opened('TagTeam-native-updater',4,None,None,0));handles.append(session)
+        checked(timeouts(session,12000,12000,12000,12000))
+        server=checked(connect(session,address.hostname,443,0));handles.append(server)
+        path=(address.path or '/')+('?' + address.query if address.query else '')
+        req=checked(request(server,'GET',path,None,None,None,0x00800000));handles.append(req)
+        accept='application/vnd.github+json' if url==API else 'application/octet-stream'
+        header='Accept: '+accept+'\r\n'
+        checked(send(req,header,len(header),None,0,0,0));checked(receive(req,None))
+        status=dword();size=dword(c.sizeof(status))
+        checked(headers(req,19|0x20000000,None,c.byref(status),c.byref(size),None))
+        if status.value!=200:raise ValueError('GitHub returned HTTP '+str(status.value))
+        result=bytearray();buffer=c.create_string_buffer(65536);count=dword()
+        while True:
+            checked(read(req,buffer,len(buffer),c.byref(count)))
+            if not count.value:break
+            if len(result)+count.value>limit:raise ValueError('Update download exceeds the permitted size.')
+            result.extend(buffer.raw[:count.value])
+        return bytes(result)
+    finally:
+        for item in reversed(handles):close(item)
 
 
 def verified_payload(data, signature, destination, expected_size, expected_digest=None):
@@ -136,7 +187,7 @@ def run(target, force=False):
             updater.update(target,payload,iso or None,progress)
     except Exception as error:
         if force or win.state() != 'withdrawn': messagebox.showerror('Tag Team update', str(error)+'\n\nYour current installation will start.')
-        try:(target/'update-check.log').write_text(str(error)+'\n',encoding='utf-8')
+        try:(target/'update-check.log').write_text(traceback.format_exc(),encoding='utf-8')
         except OSError:pass
     finally:
         win.destroy()
