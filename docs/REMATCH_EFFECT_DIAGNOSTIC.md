@@ -1,6 +1,14 @@
-# Beta 12: Rematch effect-lifecycle diagnostic
+# Rematch effect-lifecycle diagnostics
 
-This is an experimental Windows x64 diagnostic update for BT4 B14 REV2. It does **not** claim to fix the second-fight Rematch/Retry crash. Gameplay and effect lifetimes are unchanged when tracing is disabled. Main is unchanged; development stays on `integration/z3xox-main`.
+This is an experimental Windows x64 update for BT4 B14 REV2. Beta 12 introduced the opt-in diagnostics below. **Beta 13 repairs lost rematch reload jobs and invalidates destroyed effect bindings**, retaining these diagnostics for verification. Actual BT4 gameplay still needs testing. Main is unchanged; development stays on `integration/z3xox-main`.
+
+## Beta 13 repair and verification
+
+Rematch could destroy every fighter's effects while silently admitting only the first three reconstruction jobs to the scheduler. Its configured four-node queue reserves one node, and Job_Push ignored failed admission. Destroyed slots could then reference task addresses reused by another fighter.
+
+The PC scheduler now has room for the supported roster plus stage work and stops explicitly on admission failure. Rematch drains batches before exhausting its existing eight-job pool, so the fixed game structures do not grow. Teardown invalidates the five manager-owned effect bindings and child-list reference; character initialization creates and binds their replacements. This is not a null-check or skipped-effect workaround.
+
+Asset-free tests execute the production reload orchestration, pool, scheduler, queue and teardown. They cover 2..15 fighters, zero to three queued stage-work jobs, mixed retained/rebuilt fighters, 12 rematches per case (1,344 scenarios), explicit queue overflow, and invalidation of all five effect bindings for all 15 indices. Existing effect-lifecycle regressions remain applicable. Game assets and rendering are mocked in these orchestration tests: they do not establish that technique visuals or actual BT4 rematches are fixed.
 
 ## Enable and reproduce
 
@@ -45,7 +53,7 @@ exactly matches the retained Beta 11 packaged executable built at source
 `7f0836f8d99b23c9aad4c8eaf79db2a0c5b0c53c`. The older source reference
 `ef016d6e088e3d237d2de27f9c0bc63233b9354b` is not that build's source.
 
-This update adds diagnostics to the Beta 11 integration baseline, not an unconditional null check or a guessed rematch fix. Inspection shows that scene resets recurse through task reset callbacks and can kill marked tasks; character teardown can reset effect pools; slot creation depends on character effect initialization. The capture must determine which path actually invalidates this group. Whether groups should survive reset or slots should be invalidated/rebuilt remains unresolved pending that evidence.
+Beta 12 added diagnostics to the Beta 11 integration baseline. The subsequent capture established intentional character teardown, incomplete reconstruction and task-address reuse. Beta 13 therefore invalidates bindings when their owning character task is intentionally destroyed and ensures the replacement reload jobs run. Groups for characters that are retained are preserved. Further captures should identify any remaining lifecycle failures rather than silently repair them.
 
 The separate diagnostic symbols archive contains the exact executable's DWARF information, linker map, build identity/source digest and executable SHA-256. This MinGW/Clang pipeline emits DWARF rather than a PDB. Keep it paired with this release.
 

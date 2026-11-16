@@ -805,11 +805,25 @@ void BtlLoad_Reload(void) {
     ((s32 (*)(s32, s32))BtlLoad_RequestStageReload)(Battle_GetStartStage(), 0);
     for (side = 0; side < TagTeam_Count(); side++) {
         if (BattleSide_IsFormChanged(side)) {
+#ifdef PORT
+            /* Keep the ABI-sized eight-job pool. Complete a batch before
+               allocating more jobs or destroying another fighter's scene. */
+            if (BtlJob_GetFreeCount() == 0 || Job_GetCount() >= JOB_MAX - 1) {
+                Load_RunBlocking();
+            }
+#endif
             chara = BattleSide_GetStartChara(side);
             costume = BattleSide_GetStartCostume(side);
             variant = BattleSide_GetStartVariant(side);
             BattleSide_SetForm(side, chara, costume, variant);
             job = BtlJob_Alloc();
+#ifdef PORT
+            if (job == NULL) {
+                extern void Port_TagTeamFatal(const char *);
+                Port_TagTeamFatal("No loader job is available for a rematch fighter.");
+                return;
+            }
+#endif
             memset(job, 0, sizeof(BtlJob));
             job->step = BtlLoad_StepChara;
             job->side = side;

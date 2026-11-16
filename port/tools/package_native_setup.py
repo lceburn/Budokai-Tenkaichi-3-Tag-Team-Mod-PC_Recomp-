@@ -47,7 +47,7 @@ def main():
                  if args.experimental_startup else '')
     output = args.output.resolve()
     if args.effect_diagnostic:
-        test_note += ('REMATCH EFFECT-LIFECYCLE DIAGNOSTIC — no crash fix claimed.\n'
+        test_note += ('REMATCH EFFECT-LIFECYCLE DIAGNOSTICS — gameplay verification still required.\n'
                       'After updating, open engine/Enable effect diagnostics.cmd in the installed game folder, then restart Play.\n'
                       'Read engine/Effect diagnostic instructions.txt for offline reproduction and ProcDump capture.\n\n')
     if output.exists() and any(output.iterdir()):

@@ -357,6 +357,18 @@ void EftShot_DestroyChar(s32 chr) {
         EftShot_SetCharPool(chr);
         BtlTask_Kill(c->task);
         c->task = NULL;
+#ifdef PORT
+        /* These manager-owned records outlive the destroyed effect pool.
+           Reinitialization must bind new groups before another request. */
+        { s32 i;
+          for (i = 0; i < 5; i++) {
+              ED(EDiag_Unbind(chr,i,"EftShot_DestroyChar/clear-binding"));
+              c->slot[i].task = NULL;
+          }
+          c->list = NULL;
+          c->unk530 = -1;
+        }
+#endif
     }
 }
 

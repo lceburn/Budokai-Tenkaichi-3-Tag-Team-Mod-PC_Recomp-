@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--commit', required=True)
+    parser.add_argument('--version', default='0.1.0-beta.12')
     parser.add_argument('--objcopy', default='x86_64-w64-mingw32-objcopy')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
@@ -20,7 +21,7 @@ def main():
     exe = build/'bt3.exe'
     source = json.loads((build/'obj_win64/tag-net-build.json').read_text())
     record = dict(schema='effect-diagnostic-build-v1', source_commit=args.commit,
-                  branch='integration/z3xox-main', version='0.1.0-beta.12',
+                  branch='integration/z3xox-main', version=args.version,
                   executable_sha256=hashlib.sha256(exe.read_bytes()).hexdigest(),
                   executable_size=exe.stat().st_size, symbols='DWARF (no PDB)',
                   build=source)

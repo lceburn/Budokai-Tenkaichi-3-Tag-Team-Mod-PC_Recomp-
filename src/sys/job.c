@@ -10,7 +10,7 @@ void Job_Clear(void) {
     Queue_Clear(gJobQueue);
 }
 
-/* Allocates the job queue (room for 4 jobs) and empties it. */
+/* Allocates the job queue and empties it (one node is reserved by Queue). */
 void Job_Init(void) {
     gJobQueue = Heap_Alloc(sizeof(Queue), 0x20, 0, HEAP_ANY);
     memset(gJobQueue, 0, sizeof(Queue));
@@ -40,7 +40,15 @@ s32 Job_Run(void) {
 
 /* Queues a job; if nothing was ahead of it, steps it once right away and returns 1. */
 s32 Job_Push(Job *job) {
+#ifdef PORT
+    if (Queue_Push(gJobQueue, job) == NULL) {
+        extern void Port_TagTeamFatal(const char *);
+        Port_TagTeamFatal("The loader job queue is full. Loading stopped before an incomplete battle could start.");
+        return 0;
+    }
+#else
     Queue_Push(gJobQueue, job);
+#endif
     if (Queue_Count(gJobQueue) != 1) {
         return 0;
     }
