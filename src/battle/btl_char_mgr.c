@@ -1,3 +1,4 @@
+#include "battle/effect_diag.h"
 #include "battle/tag_clash.h"
 #include "common.h"
 #include "battle/battle.h"
@@ -357,6 +358,7 @@ void BtlChar_Reset(BtlMgrChr *chr) {
         m = BattleSide_GetMember(side, i);
         BtlMember_LoadParams(chr, i, 1, m->health, BattleSide_GetMemberVariant(side, i));
     }
+    ED({BtlMgrMember *m=BtlMember_GetActive(chr);EDiag_Roster(chr->side,m->chara,m->costume,m->gauge.unk20,TagTeam_Team(chr->side),TagTeam_InputPlayer(chr->side));});
     chr->unk99C = 0;
     if (BtlMember_HasAbility(chr, 0x1B)) {
         chr->unk99C = 100000;
@@ -517,6 +519,7 @@ void BtlChar_OnModelLoaded(BtlMgrChr *chr) {
     }
 #endif
     BtlObj_SetColorPreset(obj, BtlParam_GetAuraKind(chr), -1);
+    ED({BtlMgrMember *m=BtlMember_GetActive(chr);EDiag_Roster(chr->side,m->chara,m->costume,m->gauge.unk20,TagTeam_Team(chr->side),TagTeam_InputPlayer(chr->side));});
     if (BtlMember_GetActiveGauge(chr)->unk20 != 0) {
         obj->flags |= 0x40000000;
     } else {
@@ -1466,6 +1469,7 @@ void BtlChars_UpdateInput(void) {
         gBtlChars->unk1C = BtlUtil_Max(gBtlChars->unk1C - 1, 0);
     }
     BtlChars_CheckRoundReset();
+    ED({extern int gPortResim;EDiag_Frame(gBtlChars->frame,gPortResim);});
     BtlChars_UpdateFreeze();
     BtlCharSnd_ClearRequests();
     for (i = 0; i < BtlChar_GetCount(); i++) {

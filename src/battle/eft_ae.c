@@ -1,3 +1,4 @@
+#include "battle/effect_diag.h"
 #include "common.h"
 #include "battle/eft_ae.h"
 #include "sys/gfx_ot.h"
@@ -1222,13 +1223,16 @@ void BtlTaskList_PostUpdate(BtlTaskList *list) {
 /* Runs the reset callback of every task (mask 0), or of the tasks tagged with the requested owner/group mask;
    tasks whose dead bit is set afterwards are removed. */
 void BtlTaskList_Reset(BtlTaskList *list, s32 mask) {
+    ED(EDiag_Event("BtlTaskList_Reset",NULL,list,mask,0,(unsigned long long)__builtin_return_address(0)));
     BtlTask *task = list->head;
     BtlTask *next;
 
     while (task != NULL) {
         if (mask == 0 || (task->tag & mask)) {
             if (task->cls->reset != NULL) {
+                ED(EDiag_Event("reset-callback",task,list,mask,0,(unsigned long long)task->cls->reset));
                 task->cls->reset(task);
+                ED(EDiag_Event("reset-callback/return",task,list,mask,BTL_TASK_BITS(task)->dead,0));
             }
         }
         next = task->next;
@@ -1324,6 +1328,7 @@ BtlTaskList *BtlTaskList_Create(BtlTask *parent, u32 count, u32 workSize) {
         task++;
     }
     list->tasks[count - 1].nextFree = NULL;
+    ED(EDiag_List(list,list->tasks,count,sizeof(BtlTask),workSize?list->work:NULL,workSize*count,BtlPool_GetCurrent(),parent));
     return list;
 }
 
@@ -1342,7 +1347,9 @@ void BtlTask_DestroyChildList(BtlTask *task) {
 /* Kills every task of a list and frees its memory. */
 void BtlTaskList_Destroy(BtlTaskList *list) {
     if (list != NULL) {
+        ED(EDiag_Event("BtlTaskList_Destroy",NULL,list,0,0,(unsigned long long)__builtin_return_address(0)));
         BtlTaskList_KillAll(list);
+        ED(EDiag_ListGone(list));
         if (list->work != NULL) {
             BtlPool_Free(BtlPool_GetCurrent(), list->work);
         }
@@ -1380,12 +1387,14 @@ BtlTask *BtlTaskList_AddHead(BtlTaskList *list, BtlTaskCls *cls, void *arg) {
 /* Adds a task at the tail of a list (it is updated last). NULL when the list is full. */
 BtlTask *BtlTaskList_AddTail(BtlTaskList *list, BtlTaskCls *cls, void *arg) {
     BtlTask *task;
+    ED(EDiag_Event("add-tail/attempt",NULL,list,0,0,(unsigned long long)cls));
 
     if (list->tail == NULL) {
         task = BtlTaskList_AddFirst(list, cls, arg);
     } else {
         task = BtlTask_AddAfter(list->tail, cls, arg);
     }
+    ED(EDiag_Event("add-tail/result",task,list,task!=NULL,0,(unsigned long long)cls));
     return task;
 }
 
@@ -1463,6 +1472,7 @@ void BtlTask_Init(BtlTask *task, BtlTaskCls *cls, void *arg) {
     task->unkA = 0;
     task->unkB = 0;
     task->pos.x = task->pos.y = task->pos.z = 0.0f;
+    ED(EDiag_Task(task,task->list,cls));
     if (cls->init != NULL) {
         cls->init(task, arg);
     }
@@ -1470,6 +1480,7 @@ void BtlTask_Init(BtlTask *task, BtlTaskCls *cls, void *arg) {
 
 /* Removes every task of a list at once (term callbacks run). */
 void BtlTaskList_KillAll(BtlTaskList *list) {
+    ED(EDiag_Event("BtlTaskList_KillAll",NULL,list,0,0,(unsigned long long)__builtin_return_address(0)));
     while (list->head != NULL) {
         BtlTask_Kill(list->head);
     }
@@ -1482,6 +1493,7 @@ void BtlTask_SetDeadCur(void) {
 
 /* Marks a task as dead: the list pass that next reaches it (update or reset) removes it. */
 void BtlTask_SetDead(BtlTask *task) {
+    ED(EDiag_Event("BtlTask_SetDead",task,task->list,0,0,(unsigned long long)__builtin_return_address(0)));
     BTL_TASK_BITS(task)->dead = 1;
 }
 
@@ -1493,6 +1505,7 @@ void BtlTask_KillCur(void) {
 /* Removes a task now: term callback, child list destroyed, unlinked, returned to the list's free tasks. */
 void BtlTask_Kill(BtlTask *task) {
     BtlTaskList *list = task->list;
+    ED(EDiag_Kill(task,"BtlTask_Kill",(unsigned long long)__builtin_return_address(0)));
 
     if (task->cls->term != NULL) {
         task->cls->term(task);

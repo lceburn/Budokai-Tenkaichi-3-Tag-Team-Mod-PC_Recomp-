@@ -28,6 +28,7 @@ def main():
     parser.add_argument('--output', type=Path, default=ROOT / 'port/build/native-setup')
     parser.add_argument('--version', type=int, default=5, help='Native beta release number')
     parser.add_argument('--release-sequence', type=int, default=1, help='Final numeric component of the GitHub release tag')
+    parser.add_argument('--effect-diagnostic', action='store_true', help='Include opt-in effect lifecycle diagnostic instructions and enable helper.')
     parser.add_argument('--experimental-startup', action='store_true',
                         help='Package an explicitly experimental build; Setup must verify the startup checksum against the local ISO before installation.')
     args = parser.parse_args()
@@ -45,12 +46,20 @@ def main():
                  'Setup checks your disc startup data before installing and stops if it does not match.\n\n'
                  if args.experimental_startup else '')
     output = args.output.resolve()
+    if args.effect_diagnostic:
+        test_note += ('REMATCH EFFECT-LIFECYCLE DIAGNOSTIC — no crash fix claimed.\n'
+                      'After updating, open engine/Enable effect diagnostics.cmd in the installed game folder, then restart Play.\n'
+                      'Read engine/Effect diagnostic instructions.txt for offline reproduction and ProcDump capture.\n\n')
     if output.exists() and any(output.iterdir()):
         raise ValueError('Choose an empty packaging output folder.')
     output.mkdir(parents=True, exist_ok=True)
     payload = output / 'payload'
     engine = payload / 'engine'
     engine.mkdir(parents=True, exist_ok=True)
+    if args.effect_diagnostic:
+        # Keep helper files under engine/ so existing updaters accept them too.
+        shutil.copy2(ROOT/'docs/REMATCH_EFFECT_DIAGNOSTIC.md',engine/'Effect diagnostic instructions.txt')
+        (engine/'Enable effect diagnostics.cmd').write_text('@echo off\ncd /d "%~dp0.."\ntype nul > effect-diagnostics.enabled\necho Effect lifecycle diagnostics enabled. Start Play.exe and reproduce offline.\necho To disable, delete effect-diagnostics.enabled while the game is closed.\npause\n')
     if windows:
         if not args.launcher.is_file():
             raise ValueError('Build Play.exe with port/tools/build_native_launcher.py first.')
@@ -111,6 +120,7 @@ def main():
                 for p in sorted(payload.rglob('*')) if p.is_file() and p.name != 'manifest.json'}
     release = dict(version=f'beta.{args.version}' + ('-experimental' if args.experimental_startup else ''),
                    platform=args.platform+'-x86_64', release_sequence=args.release_sequence)
+    if args.effect_diagnostic:release['diagnostic']='rematch-effect-lifecycle-v1'
     if args.experimental_startup:
         release.update(experimental=True, startup_verification='install-time-checksum')
     (payload / 'release.json').write_text(json.dumps(release)+'\n')

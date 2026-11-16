@@ -1,3 +1,4 @@
+#include "battle/effect_diag.h"
 #include "common.h"
 #include "battle/btl_pool.h"
 #include "battle/eft_g.h"
@@ -1724,6 +1725,7 @@ void EftShotMgr_Update(void) {
 /* Character task init callback: selects the character's pool, creates its child list (6 tasks of 0x2000 bytes)
    and sets up its five slots from the character pack. */
 void EftShotChar_Init(EftTask *task, s32 *arg) {
+    ED(EDiag_Char(*arg,0,"EftShotChar_Init/begin"));
     EftShotChar *chr;
     s32 i;
 
@@ -1736,10 +1738,12 @@ void EftShotChar_Init(EftTask *task, s32 *arg) {
             EftShot_CreateSlotTask(*arg, i);
         }
     }
+    ED(EDiag_Char(*arg,1,"EftShotChar_Init/complete"));
 }
 
 /* Character task term callback: empties the character's pool. */
 void EftShotChar_Term(EftTask *task) {
+    ED(EDiag_Event("EftShotChar_Term",task,NULL,task->chr,0,0));
     EftShot_ResetCharPool(task->chr);
 }
 
@@ -1790,6 +1794,7 @@ void EftShot_ResetCharPool(s32 chr) {
 /* Clears a slot and binds it to its definition; reads the definition from the pack data when there is one.
    Returns 1 when the slot has pack data. */
 s32 EftShot_InitSlot(s32 chr, s32 slot, void *pack) {
+    ED(EDiag_Unbind(chr,slot,"EftShot_InitSlot/clear-binding"));
     EftShotChar *c = &gEftShot->chr[chr];
     EftShotSlot *s = &c->slot[slot];
     EftShotDef *def;

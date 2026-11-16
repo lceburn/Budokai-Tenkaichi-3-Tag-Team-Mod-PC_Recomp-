@@ -1,0 +1,2 @@
+#define INCLUDE_ASM(FOLDER,NAME)
+#define M2CTX 1

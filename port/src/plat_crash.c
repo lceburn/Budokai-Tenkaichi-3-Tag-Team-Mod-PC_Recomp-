@@ -1,3 +1,5 @@
+/* Host translation units do not define the game's PORT preprocessor flag. */
+extern void EDiag_Crash(void);
 /*
  * Crash report for the PC build: on a fatal signal, writes the signal and a backtrace (function names; the build
  * is linked without PIE and with its symbols) to the terminal and to bt3_crash.txt in the current directory, then
@@ -73,6 +75,7 @@ static LONG WINAPI on_crash(EXCEPTION_POINTERS *e) {
         return EXCEPTION_CONTINUE_SEARCH;
     }
     sCrashOut[0] = GetStdHandle(STD_ERROR_HANDLE);
+    EDiag_Crash();
     sCrashOut[1] = CreateFileA("bt3_crash.txt", GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     crash_put("bt3: crashed: exception ");
     crash_hex(code);

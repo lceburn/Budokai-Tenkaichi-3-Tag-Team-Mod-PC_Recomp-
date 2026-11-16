@@ -1,3 +1,4 @@
+#include "battle/effect_diag.h"
 #include "battle/btl_effect_owner.h"
 #include "common.h"
 #include "battle/eft_h.h"
@@ -307,13 +308,16 @@ void EftShot_CreateSlotTask(s32 chr, s32 slot) {
 
     if (cls != NULL) {
         s->chr = chr;
+        ED(EDiag_Event("EftShot_CreateSlotTask",NULL,c->list,chr,slot,(unsigned long long)cls));
         s->task = BtlTaskList_AddTail(c->list, cls, s);
+        ED(EDiag_Bind(chr,slot,s,s->task,c->list,cls,s->param->type,s->param->id));
     }
 }
 
 /* Starts the effect of a technique: stores the request in the slot, overrides the life and shot parameters
    with the request's and adds an instance task under the slot's group task. */
 void EftShot_Start(EftHStartArg *arg) {
+    ED(if(!EDiag_Request(arg->chr,arg->slot))return);
     EftHSlot *s = EftShot_GetSlot(arg->chr, arg->slot);
     EftHTaskClass *cls;
     EftHTask *group;
@@ -329,6 +333,7 @@ void EftShot_Start(EftHStartArg *arg) {
         return;
     }
     group = s->task;
+    ED(if(!EDiag_Check(arg->chr,arg->slot,s,group,gEftShot->chars[arg->chr].list,gEftShotClass[TYPE_ROW(s->param->type)].group))return);
     s->arg = *arg;
     s->unk40 = 0;
     s->param->life = arg->time * 30.0f;
@@ -344,6 +349,7 @@ void EftShot_Start(EftHStartArg *arg) {
 
 /* Kills the character task of the layer, after resetting the scene tasks that belong to the character. */
 void EftShot_DestroyChar(s32 chr) {
+    ED(EDiag_Char(chr,0,"EftShot_DestroyChar"));
     EftHChar *c = &gEftShot->chars[chr];
 
     if (c->task != NULL) {
@@ -356,6 +362,7 @@ void EftShot_DestroyChar(s32 chr) {
 
 /* Creates the character task of the layer unless it exists. */
 void EftShot_CreateChar(s32 chr) {
+    ED(EDiag_Event("EftShot_CreateChar",NULL,NULL,chr,0,0));
     EftHChar *c = &gEftShot->chars[chr];
     s32 arg;
 

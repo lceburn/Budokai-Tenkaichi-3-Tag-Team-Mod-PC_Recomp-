@@ -1,3 +1,4 @@
+#include "battle/effect_diag.h"
 #include "common.h"
 #include "battle/battle.h"
 #include "battle/battle_setup.h"
@@ -123,6 +124,7 @@ extern u8 *StgTint_GetWork(void);
 
 /* Allocates the scene, the pool arenas and the effect subsystems, then creates the root task (0 = every layer). */
 void BtlScene_Init(s32 layerMask) {
+    ED(EDiag_Scene(1));
     gBtlScene = Heap_Alloc(sizeof(BtlScene), 0x20, 0, HEAP_ANY);
     memset(gBtlScene, 0, sizeof(BtlScene));
     gBtlScene->layerMask = layerMask;
@@ -147,6 +149,7 @@ void BtlScene_Init(s32 layerMask) {
 
 /* Resets every task, destroys the tree and frees everything BtlScene_Init created. */
 void BtlScene_Term(void) {
+    ED(EDiag_Scene(0));
     BtlScene_Reset(0);
     BtlTaskList_Destroy(gBtlScene->root);
     EftHit_Term();
@@ -195,14 +198,17 @@ s32 BtlScene_CharOwnerTag(s32 objId) {
 }
 
 void BtlScene_ResetCharacter(s32 objId) {
+    ED(EDiag_Event("BtlScene_ResetCharacter/begin",NULL,NULL,objId,0,0));
     s32 owner = BtlScene_CharOwnerTag(objId);
     if (gBtlScene != NULL && owner != 0) {
         BtlTaskList_Reset(gBtlScene->root, owner);
     }
+    ED(EDiag_Boundary("BtlScene_ResetCharacter/end"));
 }
 
 /* Resets the tasks selected by mode (BTL_SCENE_RESET_*) and drops a pending stage change request. */
 void BtlScene_Reset(s32 mode) {
+    ED(EDiag_Event("BtlScene_Reset/begin",NULL,NULL,mode,0,0));
     EftCam_Clear();
     BtlScene_ClearStageChangeRequest();
     gBtlScene->randState = 0;
@@ -226,6 +232,7 @@ void BtlScene_Reset(s32 mode) {
         BtlTaskList_Reset(gBtlScene->root, 0x2000);
         break;
     }
+    ED(EDiag_Boundary("BtlScene_Reset/end"));
 }
 
 /* Draws the scene for one view; the shared draw work is done for the first view only. */
@@ -456,14 +463,17 @@ void BtlScene_CreateCharLayer2(s32 chr) {
 
 /* Frees a character's tasks in layers 2 and 1; called when the character is streamed out. */
 void BtlScene_FreeChar(s32 chr) {
+    ED(EDiag_Char(chr,0,"BtlScene_FreeChar"));
     BtlScene_FreeCharLayer2(chr);
     EftShot_DestroyChar(chr);
 }
 
 /* Creates a character's tasks in layers 1 and 2; called by the loader job when it is streamed in. */
 void BtlScene_CreateChar(s32 chr) {
+    ED(EDiag_Event("BtlScene_CreateChar/begin",NULL,NULL,chr,0,0));
     EftShot_CreateChar(chr);
     BtlScene_CreateCharLayer2(chr);
+    ED(EDiag_Boundary("BtlScene_CreateChar/end"));
 }
 
 /* Tells a task of the given kind (0..6) attached to an object whether its time is stopped this frame. */

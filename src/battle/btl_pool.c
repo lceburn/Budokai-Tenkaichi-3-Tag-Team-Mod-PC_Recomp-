@@ -1,3 +1,4 @@
+#include "battle/effect_diag.h"
 #include "common.h"
 #include "battle/btl_pool.h"
 #include "sys/heap.h"
@@ -119,6 +120,7 @@ void BtlPool_Free(s32 slot, void *ptr) {
 
 /* Rewinds an arena slot to empty. */
 void BtlPool_Reset(s32 slot) {
+    ED(EDiag_Pool(slot));
 #ifdef PORT
     if (nativePools) {
         if ((u32)slot >= BTL_POOL_SLOT_COUNT) Port_TagTeamFatal("invalid effect pool reset");

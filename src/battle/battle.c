@@ -1,3 +1,4 @@
+#include "battle/effect_diag.h"
 #include "common.h"
 #include "battle/tag_challenge.h"
 #ifdef PORT
@@ -138,6 +139,7 @@ extern void Gsc_Update(void);
 extern void BtlScript_Update(void);
 /* Puts every battle subsystem back to the start of a match (first start and rematch) and fades in over 1 s. */
 s32 Battle_Restart(void) {
+    ED({extern s32 Battle_GetMode(void),TagSession_Mode(void);EDiag_Match(Battle_GetMode(),TagSession_Mode());});
     TagTeam_Reset();
     TagChallenge_Reset();
     Snd_StopBankAndResume(TagTeam_Active() ? ((1u<<(4+PORT_FIGHTER_CAPACITY))-4) : 0x3C);
@@ -147,6 +149,7 @@ s32 Battle_Restart(void) {
     BtlGame_Reset();
     BtlStage_Reset();
     BtlChar_ResetAll();
+    ED(EDiag_Boundary("Battle_Restart/complete"));
     Fade_ResetAll();
     Fade_Start(0, 1, 1.0f);
     return 0;

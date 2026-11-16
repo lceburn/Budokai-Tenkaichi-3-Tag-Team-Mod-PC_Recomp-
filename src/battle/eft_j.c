@@ -1,3 +1,4 @@
+#include "battle/effect_diag.h"
 #include "battle/btl_effect_owner.h"
 #include "common.h"
 #include "battle/eft_j.h"
@@ -1512,6 +1513,7 @@ void EftBlast_Draw(EftJTask *task) {
 
 /* Init callback of the manager. */
 void EftBlastMgr_Init(EftJTask *task, EftJSrc *src) {
+    ED(EDiag_Event("EftBlastMgr_Init",task,NULL,0,0,(unsigned long long)src));
     EftBlastMgr *m = task->work;
 
     EftShot_Nop(0x324);
@@ -1522,6 +1524,7 @@ void EftBlastMgr_Init(EftJTask *task, EftJSrc *src) {
 
 /* Term callback of the manager. */
 void EftBlastMgr_Term(EftJTask *task) {
+    ED(EDiag_Event("EftBlastMgr_Term",task,NULL,0,0,0));
     EftEmit_FreeSet(&((EftBlastMgr *)task->work)->set);
 }
 
@@ -1532,6 +1535,7 @@ void EftBlastMgr_Update(EftJTask *task) {
 
 /* Reset callback of the manager: nothing. */
 void EftBlastMgr_Reset(EftJTask *task) {
+    ED(EDiag_Event("EftBlastMgr_Reset/no-op",task,NULL,0,0,0));
 }
 
 /* ---- effect type 2, "shots" (item class 0x2C3910, manager class 0x2C38F8): helpers; callbacks in eft_k.c ---- */
