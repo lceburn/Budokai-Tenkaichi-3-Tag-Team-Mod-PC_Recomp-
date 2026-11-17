@@ -14,6 +14,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--commit', required=True)
     parser.add_argument('--version', default='0.1.0-beta.12')
+    parser.add_argument('--instructions', type=Path, default=ROOT/'docs/REMATCH_EFFECT_DIAGNOSTIC.md')
     parser.add_argument('--objcopy', default='x86_64-w64-mingw32-objcopy')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
@@ -34,7 +35,7 @@ def main():
             archive.write(debug,debug.name)
             archive.write(build/'bt3.exe.map','TagTeam.exe.map')
             archive.writestr('build.json',json.dumps(record,indent=2)+'\n')
-            archive.write(ROOT/'docs/REMATCH_EFFECT_DIAGNOSTIC.md','Instructions.md')
+            archive.write(args.instructions,'Instructions.md')
     print(json.dumps({k:v for k,v in record.items() if k!='build'},indent=2))
 
 

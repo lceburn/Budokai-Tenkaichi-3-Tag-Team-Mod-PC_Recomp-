@@ -29,6 +29,7 @@ def main():
     parser.add_argument('--version', type=int, default=5, help='Native beta release number')
     parser.add_argument('--release-sequence', type=int, default=1, help='Final numeric component of the GitHub release tag')
     parser.add_argument('--effect-diagnostic', action='store_true', help='Include opt-in effect lifecycle diagnostic instructions and enable helper.')
+    parser.add_argument('--net-diagnostic', action='store_true', help='Include network desync capture instructions (capture enabled by default).')
     parser.add_argument('--experimental-startup', action='store_true',
                         help='Package an explicitly experimental build; Setup must verify the startup checksum against the local ISO before installation.')
     args = parser.parse_args()
@@ -50,12 +51,18 @@ def main():
         test_note += ('REMATCH EFFECT-LIFECYCLE DIAGNOSTICS — gameplay verification still required.\n'
                       'After updating, open engine/Enable effect diagnostics.cmd in the installed game folder, then restart Play.\n'
                       'Read engine/Effect diagnostic instructions.txt for offline reproduction and ProcDump capture.\n\n')
+    if args.net_diagnostic:
+        test_note += ('LAN / INTERNET DESYNC DIAGNOSTICS — capture enabled automatically during native network matches.\n'
+                      'After a desync, save net-desync.txt and game.log from BOTH installed game folders.\n'
+                      'Read engine/Network diagnostic instructions.txt. No effect diagnostic CMD or ProcDump is required.\n\n')
     if output.exists() and any(output.iterdir()):
         raise ValueError('Choose an empty packaging output folder.')
     output.mkdir(parents=True, exist_ok=True)
     payload = output / 'payload'
     engine = payload / 'engine'
     engine.mkdir(parents=True, exist_ok=True)
+    if args.net_diagnostic:
+        shutil.copy2(ROOT/'docs/NETWORK_DESYNC_DIAGNOSTIC.md',engine/'Network diagnostic instructions.txt')
     if args.effect_diagnostic:
         # Keep helper files under engine/ so existing updaters accept them too.
         shutil.copy2(ROOT/'docs/REMATCH_EFFECT_DIAGNOSTIC.md',engine/'Effect diagnostic instructions.txt')
@@ -121,6 +128,7 @@ def main():
     release = dict(version=f'beta.{args.version}' + ('-experimental' if args.experimental_startup else ''),
                    platform=args.platform+'-x86_64', release_sequence=args.release_sequence)
     if args.effect_diagnostic:release['diagnostic']='rematch-effect-lifecycle-v1'
+    if args.net_diagnostic:release['diagnostic']='network-desync-v1'
     if args.experimental_startup:
         release.update(experimental=True, startup_verification='install-time-checksum')
     (payload / 'release.json').write_text(json.dumps(release)+'\n')

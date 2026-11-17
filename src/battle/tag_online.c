@@ -11,6 +11,7 @@
 #include "battle/btl_char_mgr.h"
 #include "battle/btl_char_move.h"
 #include "battle/btl_seq.h"
+#include "battle/btl_scene.h"
 #include "sys/save.h"
 #include "../../port/src/gs/tag_net.h"
 extern void *memset(void *,s32,u32);
@@ -111,7 +112,16 @@ unsigned long long TagOnline_Digest(void) {
     }
     p=(unsigned char *)&gPortRandNext;for(j=0;j<8;j++)h=(h^p[j])*1099511628211ull;
     TagNet_Audit(-2,(u32)&gPortRandNext,8);
-    {extern unsigned long long TagLobby_Digest(void);h^=TagLobby_Digest();}
+    { extern unsigned long long TagLobby_Digest(void);
+      extern u32 gRandState[624],gPortVu0R;
+      extern s32 gRandIndex;
+      unsigned long long lobby=TagLobby_Digest();
+      u32 extra[4]={gRandIndex,gBtlScene?gBtlScene->randState:0,gBtlChars?gBtlChars->unk18:0,gPortVu0R};
+      TagNet_Audit(-3,(u32)&lobby,sizeof(lobby));
+      TagNet_Audit(-4,(u32)gRandState,sizeof(gRandState));
+      TagNet_Audit(-5,(u32)extra,sizeof(extra));
+      h^=lobby;
+    }
     return h;
 }
 #endif

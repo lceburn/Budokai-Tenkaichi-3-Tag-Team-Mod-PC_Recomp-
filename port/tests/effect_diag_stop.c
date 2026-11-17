@@ -1,5 +1,6 @@
 /* Synthetic Windows stop/capture test, no game assets or gameplay. */
 #define PORT 1
+int TagNet_Enabled(void){return 0;}
 #include "../src/effect_diag.c"
 unsigned long long TagNet_BuildIdentity(void){return 0x12345678;}
 int main(void){

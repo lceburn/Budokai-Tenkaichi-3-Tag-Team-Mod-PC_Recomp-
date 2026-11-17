@@ -3,6 +3,7 @@
  * Players predict up to eight blanks; observers consume confirmed inputs only.
  * Socket queues and camera choices are never restored by game rollback. */
 #include "tag_net.h"
+#include "../net_diag.h"
 #include <SDL3/SDL.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -357,6 +358,7 @@ int TagNet_Option(int id,int fallback) {
 void TagNet_CopyConfig(unsigned addr) { memcpy((void *)(uintptr_t)addr,&config,sizeof(config)); }
 void TagNet_Audit(int actor,unsigned addr,unsigned size) {
     unsigned i,*p=(unsigned *)(uintptr_t)addr;
+    ND_Audit(actor,p,size);
     if(!getenv("BT3_TAG_NET_AUDIT"))return;
     fprintf(stderr,"audit frame=%u actor=%d:",frame,actor);
     for(i=0;i<size/4;i++)fprintf(stderr," %08x",p[i]);fputc('\n',stderr);
@@ -394,7 +396,25 @@ static int valid(const TagNetConfig *c) {
     return 1;
 }
 static void failed(const char *s) { if(phase==5)return;say(s);phase=5;go=0;resim=0;gPortResim=0;Port_UiNotice(s); }
+static void diagnostic_context(FILE *f) {
+    int i,j;
+    fprintf(f,"config revision=%d disc=%d seed=%d stage=%d music=%d time=%d cpu=%d sizes=%d,%d party=%d practice=%d mode=%d preset=%d heal=%d speed=%d\n",config.revision,config.disc,config.seed,config.stage,config.music,config.time,config.cpu,config.size[0],config.size[1],config.party,config.practice,config.mode,config.preset,config.heal,config.speed);
+    for(i=0;i<TN_FIGHTERS;i++){fprintf(f,"roster=%d chara=%d costume=%d owner=%d cpu=%d items=",i,config.chara[i],config.costume[i],config.owner[i],config.cpuLevel[i]);for(j=0;j<8;j++)fprintf(f,"%d,",config.items[i][j]);fputc('\n',f);}
+    fprintf(f,"options");for(i=0;i<TN_OPTIONS;i++)fprintf(f," %d",config.options[i]);fputc('\n',f);
+}
 static void desync(unsigned at,Peer *p) {
+    unsigned t,start=at>60?at-60:0,end=at>~0u-60?~0u:at+60;
+    if(end>frame)end=frame;
+    for(t=start;t<=end;t++) {
+        unsigned k,actualMask=0,usedMask=0;unsigned char u[TN_PLAYERS][PAD]={{0}},a[TN_PLAYERS][PAD]={{0}};
+        for(k=0;k<TN_PLAYERS;k++) {
+            if(inputStamp[k][t%RING]==t){actualMask|=1u<<k;memcpy(a[k],inputs[k][t%RING],PAD);}
+            if((int)k==role && (actualMask&(1u<<k))){usedMask|=1u<<k;memcpy(u[k],a[k],PAD);}
+            else if(usedStamp[t%RING]==t && (int)k!=role){usedMask|=1u<<k;memcpy(u[k],used[k][t%RING],PAD);}
+        }
+        ND_Inputs(t,usedMask,actualMask,&u[0][0],&a[0][0]);if(t==~0u)break;
+    }
+    ND_Dump(at,digest[at%RING],p->hash[at%RING],identity,dataIdentity,host,role,p->role,diagnostic_context);
     fprintf(stderr,"tagnet: divergence at %u with player %d: local %016llx, remote %016llx\n",at,p->role+1,(unsigned long long)digest[at%RING],(unsigned long long)p->hash[at%RING]);
     failed("The games went out of sync. Match stopped.");
 }
@@ -1038,6 +1058,7 @@ close_menu:
         return 0;
     }
     frame=live=checked=sentDigest=0;memset(have,0,sizeof(have));TagNet_Watch(0,0);
+    ND_Reset(roundId);
     nextSend=DELAY+1;
     begun=resim=loaded=go=returned=0;
     practiceEnd=0;chosenMode=-1;
@@ -1158,7 +1179,9 @@ void TagNet_Tick(unsigned blank) {
     if(!begun){begun=1;baseBlank=blank;checked=0;}
     frame=blank-baseBlank;
     if(resim && frame>=live)resim=0;
+    ND_Begin(frame,resim,input_mask(),confirmed(),checked,status.rollbacks);
     digest[frame%RING]=Port_NetDigest();digestStamp[frame%RING]=frame;
+    ND_End(digest[frame%RING]);
     if(!resim) {
         unsigned char pad[PAD];practice_ui_input();commands();pump();
         if(host && TagNet_IsPractice() && getenv("BT3_TAG_PARTY_FLOW") && frame==600 && test_practice_round())end_practice(atoi(getenv("BT3_TAG_PARTY_FLOW")));

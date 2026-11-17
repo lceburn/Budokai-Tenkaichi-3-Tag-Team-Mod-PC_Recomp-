@@ -27,7 +27,11 @@ PORT_HOST static unsigned generation,match,frame;
 PORT_HOST static unsigned long long sequence;
 PORT_HOST static const char *lastReason;
 extern unsigned long long TagNet_BuildIdentity(void);
+extern int TagNet_Enabled(void);
 int EDiag_Enabled(void) {
+    /* Offline lifecycle sidecars cannot follow rollback. Network captures use
+       their own history, so an old marker must not interrupt a LAN match. */
+    if(TagNet_Enabled())return 0;
     if(enabled<0){const char *s=getenv("BT3_EFFECT_DIAG");FILE *f=fopen("effect-diagnostics.enabled","r");enabled=(s && !strcmp(s,"1")) || f!=NULL;if(f)fclose(f);}
     return enabled;
 }

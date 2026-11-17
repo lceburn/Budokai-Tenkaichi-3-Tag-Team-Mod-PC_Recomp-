@@ -12,6 +12,8 @@ Asset-free tests execute the production reload orchestration, pool, scheduler, q
 
 ## Enable and reproduce
 
+Beta 14 note: native networking now automatically suspends this offline checker. Network captures use the separate workflow in NETWORK_DESYNC_DIAGNOSTIC.md; an old offline marker cannot trigger a rollback stop during native network play.
+
 1. Close the game and install this update through Play or the extracted updater. Keep the whole extracted payload beside Update.exe.
 2. Open the **engine** subfolder of the installed game folder and double-click `Enable effect diagnostics.cmd`. It creates `effect-diagnostics.enabled` in the parent game folder beside Play.exe. Alternatively create that empty file yourself. No separate checker or disc upload is needed.
 3. Start Play again. Tracing is read once at process startup. Test **offline**: host sidecar generations are deliberately not restored by network rollback. A rollback attempt stops with an explicit unsupported-mode diagnostic.

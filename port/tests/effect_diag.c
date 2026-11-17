@@ -14,6 +14,8 @@ static int instances;
 static unsigned long long arena[1024*1024];
 static unsigned used;
 unsigned long long TagNet_BuildIdentity(void){return 0x12345678;}
+static int online;
+int TagNet_Enabled(void){return online;}
 void Vec4_Copy(Vec4 *out,Vec4 *in){*out=*in;}
 int BtlPool_GetCurrent(void){return 4;}
 void *BtlPool_Alloc(int pool,int bytes){void *p;(void)pool;bytes=(bytes+15)&~15;assert(used+bytes<sizeof(arena));p=(char *)arena+used;used+=bytes;memset(p,0,bytes);return p;}
@@ -29,6 +31,7 @@ static void bind_slot_fixture(int actor,BtlTask *t){EDiag_Char(actor,1,"fixture-
 static int valid(int actor,BtlTask *t){return EDiag_Check(actor,2,(void *)(uintptr_t)(actor+1),t,t->list,&group_class);}
 int main(void){
     BtlTaskList *root;BtlTask *group,*again,*all[NF];
+    enabled=1;online=1;assert(!EDiag_Enabled());online=0;assert(EDiag_Enabled());
     clear();root=BtlTaskList_Create(NULL,16,0);group=BtlTaskList_AddTail(root,&group_class,NULL);bind_slot_fixture(2,group);
     assert(valid(2,group));BtlTask_Kill(group);assert(!valid(2,group)&&stopped);
     assert(!strcmp(lastReason,"bound-group-on-free-chain"));
