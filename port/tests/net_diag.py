@@ -11,7 +11,7 @@ ROOT=Path(__file__).resolve().parents[2]
 def main():
     out=ROOT/'port/build/net-diag-tests';out.mkdir(exist_ok=True)
     exe=out/'capture'
-    subprocess.run(['cc','-std=gnu99','-O2','port/tests/net_diag.c','-o',str(exe)],cwd=ROOT,check=True)
+    subprocess.run(['cc','-std=gnu99','-O2','-Iinclude','port/tests/net_diag.c','-o',str(exe)],cwd=ROOT,check=True)
     for name in ('host','client'):
         folder=out/name;folder.mkdir(exist_ok=True)
         subprocess.run([exe,name],cwd=folder,check=True)

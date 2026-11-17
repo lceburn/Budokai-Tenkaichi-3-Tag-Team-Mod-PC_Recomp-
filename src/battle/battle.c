@@ -1,4 +1,5 @@
 #include "battle/effect_diag.h"
+#include "battle/net_rng_diag.h"
 #include "common.h"
 #include "battle/tag_challenge.h"
 #ifdef PORT
@@ -210,23 +211,28 @@ s32 Battle_Update(void) {
     s32 i;
     s32 singleView;
 
+    NR_PHASE(NP_FIGHTERS);
     BtlChars_UpdateInput();
     BtlChars_UpdateMain();
+    NR_PHASE(NP_EFFECTS_UPDATE);
     BtlScene_Update();
     EftDet_Update();
     BtlScene_PostUpdate();
     BtlChars_PostScene();
     BtlScene_CheckStageChange();
+    NR_PHASE(NP_LOADERS);
     BtlLoad_PollCharaRequest();
     BtlLoad_PollObjectRequest();
-    BtlStage_Update();
+    NR_PHASE(NP_STAGE_UPDATE);BtlStage_Update();
+    NR_PHASE(NP_CAMERA);
     for (i = 0; i < TagTeam_CameraCount(); i++) {
         extern s32 TagNet_Active(void);
         if (!TagNet_Active() && !TagTeam_ViewVisible(i)) continue;
-        BtlCam_SelectView(i); BtlCam_UpdateView(i);
+        NR_VIEW(i);BtlCam_SelectView(i); BtlCam_UpdateView(i);
     }
     singleView = BtlCam_UpdateOverride();
     BtlChars_EndFrame();
+    NR_PHASE(NP_VISIBILITY);NR_VIEW(-1);
     BtlObj_UpdateAll();
     if (Battle_IsSplitScreen() && !singleView) {
         for (i = 0; i < TagTeam_ViewCount(); i++) {
@@ -251,20 +257,21 @@ s32 Battle_Draw(void) {
 
     Dbg_ProfMark(prof);
     Gfx_MarkPass(1);
+    NR_PHASE(NP_DRAW_WORLD);NR_VIEW(view);
     StgModel_Cull(view);
     StgModel_Draw(view);
     Dbg_ProfColor(prof, 0x80FF4040);
     Dbg_ProfMark(prof);
     Gfx_MarkPass(3);
-    StgFx_DrawPre();
+    NR_PHASE(NP_DRAW_EFFECTS);StgFx_DrawPre();
     Dbg_ProfColor(prof, 0x80FFFFFF);
     Dbg_ProfMark(prof);
     Gfx_MarkPass(2);
-    BtlObjDraw_Draw();
+    NR_PHASE(NP_DRAW_FIGHTERS);BtlObjDraw_Draw();
     Dbg_ProfColor(prof, 0x8040FF40);
     Dbg_ProfMark(prof);
     Gfx_MarkPass(3);
-    StgFx_DrawNop();
+    NR_PHASE(NP_DRAW_EFFECTS);StgFx_DrawNop();
     Dbg_ProfColor(prof, 0x80FFFFFF);
     Dbg_ProfMark(prof);
     Gfx_MarkPass(4);
@@ -278,7 +285,7 @@ s32 Battle_Draw(void) {
     Dbg_ProfColor(prof, 0x80FFFFFF);
     Dbg_ProfMark(prof);
     Gfx_MarkPass(0);
-    BtlGame_Draw();
+    NR_PHASE(NP_HUD);BtlGame_Draw();
     Dbg_ProfColor(prof, 0x80FF40FF);
     Dbg_ProfMark(prof);
     Gfx_MarkPass(0);
@@ -287,7 +294,7 @@ s32 Battle_Draw(void) {
     Dbg_ProfColor(prof, 0x80FF40FF);
     Dbg_ProfMark(prof);
     Gfx_MarkPass(3);
-    StgFx_DrawOverlay();
+    NR_PHASE(NP_OVERLAY);StgFx_DrawOverlay();
     Dbg_ProfColor(prof, 0x80FFFFFF);
     Gfx_MarkPass(0);
     return 0;
@@ -298,26 +305,27 @@ s32 Battle_DrawSplit(void) {
     s32 i;
 
     Dbg_ProfMark(gBattleProf);
-    Gfx_MarkPass(1);
+    NR_PHASE(NP_DRAW_WORLD);Gfx_MarkPass(1);
     for (i = 0; i < TagTeam_ViewCount(); i++) {
         if (!TagTeam_ViewVisible(i)) continue;
         BtlCam_SelectView(i);
         BtlCam_ApplyView(1);
+        NR_VIEW(gBtlCamView);
         StgModel_Cull(gBtlCamView);
         StgModel_Draw(gBtlCamView);
     }
     Dbg_ProfColor(gBattleProf, 0x80FF4040);
     Dbg_ProfMark(gBattleProf);
     Gfx_MarkPass(3);
-    StgFx_DrawPre();
+    NR_PHASE(NP_DRAW_EFFECTS);NR_VIEW(-1);StgFx_DrawPre();
     Dbg_ProfColor(gBattleProf, 0x80FFFFFF);
     Dbg_ProfMark(gBattleProf);
     Gfx_MarkPass(2);
-    BtlObjDraw_Draw();
+    NR_PHASE(NP_DRAW_FIGHTERS);BtlObjDraw_Draw();
     Dbg_ProfColor(gBattleProf, 0x8040FF40);
     Dbg_ProfMark(gBattleProf);
     Gfx_MarkPass(3);
-    StgFx_DrawNop();
+    NR_PHASE(NP_DRAW_EFFECTS);StgFx_DrawNop();
     Dbg_ProfColor(gBattleProf, 0x80FFFFFF);
     Dbg_ProfMark(gBattleProf);
     Gfx_MarkPass(4);
@@ -326,6 +334,7 @@ s32 Battle_DrawSplit(void) {
         if (!TagTeam_ViewVisible(i)) continue;
         BtlCam_SelectView(i);
         BtlCam_ApplyView(1);
+        NR_VIEW(gBtlCamView);
         BtlScene_Draw(i == 0);
         Ot_Draw();
     }
@@ -336,7 +345,7 @@ s32 Battle_DrawSplit(void) {
     Dbg_ProfColor(gBattleProf, 0x80FFFFFF);
     Dbg_ProfMark(gBattleProf);
     Gfx_MarkPass(0);
-    BtlGame_Draw();
+    NR_PHASE(NP_HUD);NR_VIEW(-1);BtlGame_Draw();
     Dbg_ProfColor(gBattleProf, 0x80FF40FF);
     Dbg_ProfMark(gBattleProf);
     Gfx_MarkPass(0);
@@ -345,7 +354,7 @@ s32 Battle_DrawSplit(void) {
     Dbg_ProfColor(gBattleProf, 0x80FF40FF);
     Dbg_ProfMark(gBattleProf);
     Gfx_MarkPass(3);
-    StgFx_DrawOverlay();
+    NR_PHASE(NP_OVERLAY);StgFx_DrawOverlay();
     Dbg_ProfColor(gBattleProf, 0x80FFFFFF);
     Gfx_MarkPass(0);
     return 0;
@@ -357,6 +366,7 @@ void Battle_Loop(void) {
     s32 done;
 
     do {
+        NR_PHASE(NP_SETUP);NR_VIEW(-1);
         if (Battle_GetWork()->flags & BATTLE_FLAG_RESTART) {
             Battle_Restart();
             Battle_GetWork()->flags &= ~BATTLE_FLAG_RESTART;
@@ -374,8 +384,9 @@ void Battle_Loop(void) {
            sentinel as if it were a sequence-table index. */
         { extern int TagNet_Stopped(void); if(TagNet_Stopped()) {BattleResult_Set(BTL_RESULT_ABORT,0);break;} }
 #endif
-        Snd_Update();
+        NR_PHASE(NP_AUDIO);Snd_Update();
         Snd_SendFighters();
+        NR_PHASE(NP_SETUP);
         BtlGame_PreUpdate();
         Battle_UpdateWork();
         TagChallenge_Update();
@@ -383,12 +394,13 @@ void Battle_Loop(void) {
 #ifdef PORT
         {extern void TagOnline_TestPrepare(void);TagOnline_TestPrepare();}
 #endif
-        BtlAiMgr_Update();
+        NR_PHASE(NP_AI_INPUT);BtlAiMgr_Update();
         BtlChars_SampleInput();
         draw = Battle_Update();
-        TagTeam_UpdateMechanics();
+        NR_PHASE(NP_MECHANICS);TagTeam_UpdateMechanics();
         done = BtlGame_Update();
 #ifdef PORT
+        NR_PHASE(NP_VIEW_PREP);
         { extern s32 TagOnline_BeginDraw(void); if(TagOnline_BeginDraw()) {
             draw=0;BtlObj_UpdateVisibility(0);BtlObj_FinishVisibility(0);
         } }
@@ -409,13 +421,14 @@ void Battle_Loop(void) {
         { extern void PortSpectator_EndDraw(void); PortSpectator_EndDraw(); }
         { extern void TagOnline_EndDraw(void); TagOnline_EndDraw(); }
 #endif
-        TagChallenge_Draw();
+        NR_PHASE(NP_OVERLAY);TagChallenge_Draw();
 #ifdef PORT
         {extern void TagLobbyMenu_Draw(void),TagLobby_Draw(void);TagLobbyMenu_Draw();TagLobby_Draw();}
 #endif
-        Gfx_EndFrame(2);
+        NR_PHASE(NP_FRAME_END);Gfx_EndFrame(2);
         Dma_Flush();
     } while (!done);
+    NR_PHASE(NP_IDLE);NR_VIEW(-1);
 }
 
 /* Runs one whole battle scene; called by Game_Main after the menu overlay returns. */

@@ -7,6 +7,7 @@
  * NOT verified against a console: see docs/port/README.md (maths harness).
  */
 #include <stdint.h>
+#include "battle/net_rng_diag.h"
 #include <string.h>
 #include "port/vu0_a.h"
 
@@ -76,9 +77,11 @@ float Mathf_Sqrt(float x) {
 
 /* Rand_SeedFloat (0x11F7D8): vrinit from the float's bits, and libc srand((u32)(seed * 10000000.0f)). */
 void Rand_SeedFloat(float seed) {
+    uint32_t old=gPortVu0R;
     float scaled = from(RefVu0_MulBits(bits(seed), bits(10000000.0f)));
 
     gPortVu0R = 0x3F800000u | (bits(seed) & 0x007FFFFFu);
+    ND_Rng(NR_VU0_SEED,old,gPortVu0R,(unsigned long long)__builtin_return_address(0),bits(seed));
     /* The PS2 conversion truncates and saturates; the only seed the game passes (0.1234141f) is far from both. */
     srand(scaled >= 4294967296.0f ? 0xFFFFFFFFu : scaled <= 0.0f ? 0u : (unsigned)scaled);
 }
@@ -92,6 +95,7 @@ static uint32_t rnext(void) {
 
 /* Rand_Float01 (0x11F830): seven steps, re-seed from the value produced, seven steps, minus 1.0. */
 float Rand_Float01(void) {
+    uint32_t old=gPortVu0R,result;
     uint32_t f = 0;
     int i;
 
@@ -102,5 +106,7 @@ float Rand_Float01(void) {
     for (i = 0; i < 7; i++) {
         f = rnext();
     }
-    return from(RefVu0_SubBits(f, 0x3F800000u));
+    result=RefVu0_SubBits(f,0x3F800000u);
+    ND_Rng(NR_VU0_NEXT,old,gPortVu0R,(unsigned long long)__builtin_return_address(0),result);
+    return from(result);
 }

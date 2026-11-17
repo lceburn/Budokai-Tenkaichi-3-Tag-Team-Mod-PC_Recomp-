@@ -1,6 +1,8 @@
-# Beta 14: native LAN and internet desync capture
+# Beta 15: RNG caller and phase desync capture
 
 This experimental Windows update adds diagnostics for native Tag Team network matches. It does **not** claim to fix the reported desyncs. The Beta 13 rematch reload repair is retained. Main is unchanged; development remains on `integration/z3xox-main`.
+
+Beta 15 extends the Beta 14 reports with random-number consumption attribution. The paired Beta 14 captures showed matching captured fighter state but differing shared RNG state. That establishes a useful lead, not the responsible caller or a repair. The generator algorithms, checksum and network protocol remain unchanged.
 
 ## Install and collect
 
@@ -16,7 +18,7 @@ Beta 14 automatically suspends the **offline effect-lifecycle checker during nat
 
 ## Bounded overhead and opt-out
 
-The recorder holds a fixed 512-tick ring in host memory (a few MB). It copies selected state and does no per-frame disk logging or network transmission. On a desync, it writes at most 121 ticks around the reported mismatch, subject to available history. No full game memory or proprietary resources are included. Input bytes, roster IDs and gameplay state are still private test data: share them only with intended recipients.
+The recorder holds a fixed 512-tick state ring, 64 caller/phase/view aggregates per tick and 65,536 recent RNG events in host memory (under 16 MiB in the tested layouts). It does no per-frame disk logging or diagnostic network transmission. On a desync, it writes at most 121 state ticks and RNG event intervals from 32 ticks before to 8 after the reported mismatch, subject to available history. A report can occupy several MB; only the latest is kept. No full game memory or proprietary resources are included. Input bytes, roster IDs and gameplay state are still private test data: share them only with intended recipients.
 
 To turn this capture off, close the game and create an empty **disable-net-diagnostics.txt** beside Play.exe, then restart. Remove that file while closed to re-enable. Advanced alternative: set BT3_NET_DIAG=0 in the launch environment. Enable/disable state is read once per process. An existing explicit BT3_TAG_NET_AUDIT environment setting enables an older verbose console audit; leave that unset for this bounded workflow.
 
@@ -28,8 +30,12 @@ To turn this capture off, close the game and create an empty **disable-net-diagn
 - Additional diagnostic-only RNG state: MT19937's 624 words/index, scene/fighter generators and VU0 R. These extra values do not alter or extend the wire checksum.
 - Recent actual received inputs and inputs used for prediction, with validity masks. Inactive producer slots are excluded. A missing record or mask means unavailable, not zero.
 - Frame confirmation/check progress, recorded rollback counts and resimulation flags. Replayed ticks overwrite earlier predictions. A rewind invalidates abandoned future snapshots before rebuilding them. Round changes reset the capture history.
+- RNG generator advances and wrapper requests: caller return address, coarse execution phase, local view, before/after state, result bits, per-kind ordinal and local replay branch. Per-tick counts and call-site aggregates survive event-ring overwrites; aggregate overflow and overwritten event counts are explicitly reported. Wrapper kinds annotate the requesting function and must not be counted as additional generator advances.
+- The first captured round-entry RNG state, plus up to 32 pre-tick libc/VU0 seed events. MT events record its index and returned value; the full MT state remains in the state snapshots. One VU0 event represents one public Float01 request, including its original internal shifts.
 
 State is captured at **tick entry, before that tick's inputs**. A state difference at tick T can result from earlier input or simulation work. The reported mismatch is a periodic checksum checkpoint, not necessarily the first divergent instruction. The first difference in this bounded window may already be downstream of an earlier cause.
+
+RNG events attached to tick T describe work **after** its entry snapshot, potentially explaining the state at T+1. The last current-tick interval may be incomplete. Phase tags identify the most recent explicit coarse boundary (update, camera, draw, HUD, etc.), rather than a complete call stack. Local view numbers, sequence numbers and replay branches can legitimately differ between peers. Return addresses require the matching release map; a different build's symbols must not be used. At heavy load, exact earlier events may be overwritten: the report states those limits rather than inventing missing evidence.
 
 The code reads state without invoking RNG generators, writing simulation structures, changing inputs, changing network packets, or replacing checksum values. Capture metadata is host-only and excluded from rollback snapshots. Differences in the extra RNG fields alone are investigation clues, not proof of the cause or necessarily a difference in the wire checksum.
 
@@ -41,11 +47,15 @@ The repository includes an offline comparison tool; testers do not need Python t
 python port/tools/compare_net_desync.py host-net-desync.txt client-net-desync.txt
 ```
 
+For Beta 15 caller names, download that release's Network Diagnostic Symbols ZIP and add `--symbols "Tag-Team-Recomp-Beta.15-Network-Diagnostic-Symbols.zip"`. The tool validates its build identity, then resolves return addresses to the nearest retained linker symbol plus offset. It compares complete tick intervals by generator counts, caller/phase aggregates and ordered generator events, excluding local view/branch/sequence differences. Overflow can limit attribution. Beta 14 reports remain readable.
+
 It checks build/data/round/mismatch pairing, verifies reversed local/remote hashes, independently recomputes complete captured state checksums, and identifies the first recorded differing fighter field/component and input bytes. Extra RNG differences are reported separately. Reports from different events are rejected for state comparison. The tool does not send any files over the network.
 
 ## Validation and limits
 
 Asset-free tests cover ring wraparound, all 15 supported actor indices, full RNG state, input validity masks, rollback replay/future invalidation, first-report behavior, round reset, disabled capture, and report-write failure. Paired synthetic reports identify an injected health difference at the exact actor/tick and recompute the captured checksum. The retained offline lifecycle tests check that native networking suppresses that offline checker.
+
+The RNG regression harness compares instrumented production functions with retained Beta 14 sources across libc, VU0 and MT requests, checking output and generator state. Its shared float adapters test instrumentation equivalence, not independent PS2 arithmetic conformance. Additional tests exercise wrapper attribution, phases/views, event-ring and aggregate overflow, disabled tracing, replay invalidation, symbol-build pairing and incomplete interval handling. A Windows compiler harness extracts the same production function bodies to avoid linking unrelated math code.
 
 Release notes record the completed Windows build, Windows capture harness and package checks. Matching DWARF/debug information, linker map, source/build digests and executable SHA-256 are included in the separate symbols archive. No PDB is emitted by this toolchain.
 

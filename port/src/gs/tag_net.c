@@ -1180,6 +1180,7 @@ void TagNet_Tick(unsigned blank) {
     frame=blank-baseBlank;
     if(resim && frame>=live)resim=0;
     ND_Begin(frame,resim,input_mask(),confirmed(),checked,status.rollbacks);
+    ND_Phase(NP_NET_TICK);ND_View(-1);
     digest[frame%RING]=Port_NetDigest();digestStamp[frame%RING]=frame;
     ND_End(digest[frame%RING]);
     if(!resim) {

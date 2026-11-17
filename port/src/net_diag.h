@@ -2,10 +2,13 @@
 #define NET_DIAG_H
 #include <stdint.h>
 #include <stdio.h>
+#include "../../include/battle/net_rng_diag.h"
 #define ND_HISTORY 512
 #define ND_ACTORS 15
 #define ND_PADS 10
 #define ND_PAD_BYTES 18
+#define ND_RNG_SITES 64
+#define ND_RNG_EVENTS 65536
 int ND_Enabled(void);
 void ND_Reset(unsigned);
 void ND_Begin(unsigned,int,unsigned,unsigned,unsigned,unsigned);

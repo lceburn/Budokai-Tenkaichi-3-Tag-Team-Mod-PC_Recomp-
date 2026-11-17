@@ -3,6 +3,7 @@
  * drive: these report success. (Files are served by plat_file.c.)
  */
 #include <stdint.h>
+#include "battle/net_rng_diag.h"
 
 int GetThreadId(void) { return 1; }
 int ChangeThreadPriority(int tid, int prio) { (void)tid; (void)prio; return 0; }
@@ -30,8 +31,12 @@ long func_002BB390(void) {
  * 64-bit generator). Part of the simulation state. include/port_libm.h renames the game's rand / srand to these.
  */
 unsigned long long gPortRandNext = 1;
-void Port_Srand(unsigned seed) { gPortRandNext = seed; }
+void Port_Srand(unsigned seed) {unsigned long long old=gPortRandNext;gPortRandNext=seed;ND_Rng(NR_LIBC_SEED,old,gPortRandNext,(unsigned long long)__builtin_return_address(0),seed);}
 int Port_Rand(void) {
+    unsigned long long old=gPortRandNext;
+    unsigned value;
     gPortRandNext = gPortRandNext * 6364136223846793005ull + 1;
-    return (int)((gPortRandNext >> 32) & 0x7FFFFFFF);
+    value=(unsigned)((gPortRandNext>>32)&0x7fffffffu);
+    ND_Rng(NR_LIBC_NEXT,old,gPortRandNext,(unsigned long long)__builtin_return_address(0),value);
+    return (int)value;
 }

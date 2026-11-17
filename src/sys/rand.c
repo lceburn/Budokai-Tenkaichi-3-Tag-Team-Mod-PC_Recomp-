@@ -1,4 +1,5 @@
 #include "common.h"
+#include "battle/net_rng_diag.h"
 #include "sys/rand.h"
 
 extern void *memset(void *dst, s32 c, u32 n);
@@ -57,6 +58,9 @@ void Rand_SeedByArray(u32 *key, s32 keyLen) {
  * are never regenerated: this is not a true MT19937 sequence. */
 u32 Rand_Next(void) {
     u32 y;
+#ifdef PORT
+    u32 beforeIndex=gRandIndex;
+#endif
 
     if (gRandIndex >= RAND_N) {
         s32 kk;
@@ -77,6 +81,9 @@ u32 Rand_Next(void) {
     y ^= (y << 7) & 0x9D2C5680;
     y ^= (y << 15) & 0xEFC60000;
     y ^= y >> 18;
+#ifdef PORT
+    ND_Rng(NR_MT_NEXT,beforeIndex,gRandIndex,(unsigned long long)__builtin_return_address(0),y);
+#endif
     return y;
 }
 
@@ -98,5 +105,9 @@ u32 Rand_Range(u32 n) {
     if (n == 0) {
         return 0;
     }
+#ifdef PORT
+    {u32 before=gRandIndex,value=Rand_Next()%n;ND_Rng(NR_MT_RANGE,before,gRandIndex,(unsigned long long)__builtin_return_address(0),value);return value;}
+#else
     return Rand_Next() % n;
+#endif
 }

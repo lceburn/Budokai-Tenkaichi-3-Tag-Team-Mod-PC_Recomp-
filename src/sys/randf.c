@@ -1,4 +1,9 @@
 #include "common.h"
+#include "battle/net_rng_diag.h"
+#ifdef PORT
+extern unsigned long long gPortRandNext;
+extern u32 gPortVu0R;
+#endif
 #include "sys/randf.h"
 
 /*
@@ -71,12 +76,21 @@ f32 Rand_FloatRange(f32 a, f32 b) {
         a = b;
         b = tmp;
     }
+#ifdef PORT
+    {u32 old=gPortVu0R;union {f32 f;u32 u;} result;result.f=a+Rand_Float01()*(b-a);ND_Rng(NR_VU0_RANGE,old,gPortVu0R,(unsigned long long)__builtin_return_address(0),result.u);return result.f;}
+#else
     return a + Rand_Float01() * (b - a);
+#endif
 }
 
 /* libc rand(). */
 s32 Rand_Libc(void) {
+#ifdef PORT
+    unsigned long long old=gPortRandNext;s32 value=rand();
+    ND_Rng(NR_LIBC_WRAP,old,gPortRandNext,(unsigned long long)__builtin_return_address(0),value);return value;
+#else
     return rand();
+#endif
 }
 
 /* Returns an integer in [a, b] (either order): lo + rand() % (hi - lo + 1); a itself when a == b. */
@@ -91,5 +105,9 @@ s32 Rand_IntRange(s32 a, s32 b) {
         a = b;
         b = tmp;
     }
+#ifdef PORT
+    {unsigned long long old=gPortRandNext;s32 value=a+Rand_Libc()%(b-a+1);ND_Rng(NR_LIBC_RANGE,old,gPortRandNext,(unsigned long long)__builtin_return_address(0),value);return value;}
+#else
     return a + Rand_Libc() % (b - a + 1);
+#endif
 }
