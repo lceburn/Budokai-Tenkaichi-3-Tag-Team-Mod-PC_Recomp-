@@ -36,6 +36,13 @@ def main():
     windows = args.platform == 'windows'
     if windows != (sys.platform == 'win32'):
         raise ValueError('Freeze Setup on the same operating system as the release.')
+    # PyInstaller drops tkinter when its Tcl library is broken. Refuse that
+    # environment before building an installer whose GUI cannot start.
+    try:
+        import tkinter
+        tkinter.Tcl().eval('info patchlevel')
+    except Exception as error:
+        raise ValueError('Packaging requires a working Python tkinter/Tcl installation.') from error
     dat = (args.portable / 'bt3.dat').read_bytes()
     try:
         native_tables.check_recipe_coverage(dat)
