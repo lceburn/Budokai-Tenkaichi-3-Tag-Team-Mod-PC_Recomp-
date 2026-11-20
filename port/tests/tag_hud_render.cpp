@@ -86,6 +86,9 @@ int main() {
         if(id==TAG_OPT_ALLY_NAMES || id==TAG_OPT_REVIVE_PROGRESS_TEXT)assert(off>0);
         opts[id]=1;opts[TAG_OPT_HIDE_ALL_HUD]=1;assert(draw()==0);
     }
+    // A multi-team winner banner is also governed by the master HUD setting.
+    reset();latest.teamCount=5;latest.winnerTeam=4;assert(draw()>0);
+    opts[TAG_OPT_HIDE_ALL_HUD]=1;assert(draw()==0);
     // Master hiding must not make the settings previews disappear.
     reset();opts[TAG_OPT_HIDE_ALL_HUD]=1;
     Port_TagPreview(TAG_OPT_FUSION_METER);assert(draw()>0);

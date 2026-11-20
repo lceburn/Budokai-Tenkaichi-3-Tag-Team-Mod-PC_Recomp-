@@ -8,6 +8,7 @@ import re
 import zipfile
 
 FIELDS=('chara costume hp maxHp ki blast action target player lockedOff clash fused controller next seconds swap revive helper assist power posX posY posZ posW rotX rotY rotZ rotW').split()
+TEAM_FIELDS=FIELDS[:20]+['team']+FIELDS[20:]
 
 
 def pairs(line):
@@ -16,7 +17,7 @@ def pairs(line):
 
 def read(path):
     lines=Path(path).read_text(encoding='utf-8').splitlines()
-    if not lines or not lines[0].startswith(('net-desync-v1 ','net-desync-v2 ')):raise ValueError('Not a network diagnostic capture: '+str(path))
+    if not lines or not lines[0].startswith(('net-desync-v1 ','net-desync-v2 ','net-desync-v3 ')):raise ValueError('Not a network diagnostic capture: '+str(path))
     result={'meta':pairs(lines[0]),'frames':{},'config':[],'initial':{}}
     frame=None
     for line in lines[1:]:
@@ -43,10 +44,11 @@ def read(path):
 
 
 def recompute(frame):
-    if len(frame.get('header',[]))!=4 or len(frame.get('rng',[]))!=2 or len(frame.get('lobby',[]))!=2:return None
+    header_words=len(frame.get('header',[]))
+    if header_words not in (4,6) or len(frame.get('rng',[]))!=2 or len(frame.get('lobby',[]))!=2:return None
     words=list(frame['header'])
     for actor in range(frame['header'][0]):
-        if len(frame['actors'].get(actor,[]))!=28:return None
+        if len(frame['actors'].get(actor,[]))!=(29 if header_words==6 else 28):return None
         words+=frame['actors'][actor]
     words+=frame['rng'];h=14695981039346656037
     for word in words:
@@ -113,11 +115,12 @@ def compare(a,b,symbols=None):
         for actor in sorted(x['actors'].keys()|y['actors'].keys()):
             left,right=x['actors'].get(actor),y['actors'].get(actor)
             if left is None or right is None:differences.append({'actor':actor,'component':'missing-actor'});continue
+            fields=TEAM_FIELDS if len(left)==29 and len(right)==29 else FIELDS
             for i in range(max(len(left),len(right))):
                 u=left[i] if i<len(left) else None;v=right[i] if i<len(right) else None
                 if u!=v:
-                    entry={'actor':actor,'field':FIELDS[i] if i<len(FIELDS) else 'word'+str(i),'first_bits':u,'second_bits':v}
-                    if 20<=i<28 and u is not None and v is not None:
+                    entry={'actor':actor,'field':fields[i] if i<len(fields) else 'word'+str(i),'first_bits':u,'second_bits':v}
+                    if len(fields)-8<=i<len(fields) and u is not None and v is not None:
                         entry.update(first_float=struct.unpack('<f',struct.pack('<I',u))[0],second_float=struct.unpack('<f',struct.pack('<I',v))[0])
                     differences.append(entry)
         if differences and result['first_state_difference'] is None:result['first_state_difference']={'frame':tick,'differences':differences}

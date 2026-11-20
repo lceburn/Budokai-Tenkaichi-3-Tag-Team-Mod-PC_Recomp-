@@ -68,7 +68,7 @@ int TlRoom_Kick(TlRoom *r,int sender,int member) {
     return TlRoom_Leave(r,member);
 }
 int TlDraft_Valid(const TlRoom *r,const TlDraft *d) {
-    int i,counts[4]={0},mask=0;
+    int i,counts[TAG_SQUAD_TEAMS]={0},mask=0;
     if(d->mode<TL_TEAM || d->mode>TL_TOURNAMENT || d->count<1 || d->count>10 ||
        d->playerLimit<1 || d->playerLimit>(d->mode==TL_GAUNTLET?5:10) ||
        d->stage<0 || d->music<0 || d->time<0 || d->time>5 || d->difficulty<0 || d->difficulty>=TL_DIFFICULTIES ||
@@ -79,6 +79,15 @@ int TlDraft_Valid(const TlRoom *r,const TlDraft *d) {
         if(d->teams<1 || d->teams>4)return 0;
     } else if(d->mode==TL_FFA) {
         if(d->count<2 || d->teams!=d->count)return 0;
+    } else if(d->mode==TL_TEAM) {
+        /* Two to five teams, standing as the shared room rule says. A draft
+           has no row sizes of its own: its first row is what the rule gives
+           these teams (two teams: the fighters of team 1). */
+        int first=0,rows[2],order[10];
+        if(d->count<2 || d->teams<2 || d->teams>TAG_SQUAD_TEAMS)return 0;
+        if(d->teams==2){for(i=0;i<d->count;i++)first+=d->team[i]==0;}
+        else if(TlTeams_Arrange(d->teams,d->count,d->team,rows,order))first=rows[0];
+        if(!TlTeams_Valid(d->teams,d->count,first,d->team))return 0;
     } else if(d->count<2 || d->teams!=2)return 0;
     for(i=0;i<d->count;i++) {
         int owner=d->owner[i];

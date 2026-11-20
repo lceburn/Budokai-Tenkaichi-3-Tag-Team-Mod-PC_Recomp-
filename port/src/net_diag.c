@@ -9,7 +9,7 @@ typedef struct {uint64_t seq,caller,before,after;unsigned frame,branch,ordinal,r
 typedef struct {
     unsigned stamp,valid,rewind,mask,confirmed,checked,rollbacks;
     unsigned present,words[ND_ACTORS],headerWords,rngWords,lobbyWords,mtWords,extraWords;
-    uint32_t actor[ND_ACTORS][32],header[4],rng[2],lobby[2],mt[624],extra[4];
+    uint32_t actor[ND_ACTORS][32],header[6],rng[2],lobby[2],mt[624],extra[4];
     uint64_t hash;
     unsigned hashValid,usedMask,actualMask;
     unsigned char used[ND_PADS][ND_PAD_BYTES],actual[ND_PADS][ND_PAD_BYTES];
@@ -80,7 +80,7 @@ static unsigned copy_words(uint32_t *out,unsigned capacity,const void *p,unsigne
 void ND_Audit(int actor,const void *p,unsigned bytes) {
     if(!ND_Enabled()||captured||!current||!current->valid)return;
     if(actor>=0&&actor<ND_ACTORS){current->words[actor]=copy_words(current->actor[actor],32,p,bytes);current->present|=1u<<actor;}
-    else if(actor==-1)current->headerWords=copy_words(current->header,4,p,bytes);
+    else if(actor==-1)current->headerWords=copy_words(current->header,6,p,bytes);
     else if(actor==-2)current->rngWords=copy_words(current->rng,2,p,bytes);
     else if(actor==-3)current->lobbyWords=copy_words(current->lobby,2,p,bytes);
     else if(actor==-4)current->mtWords=copy_words(current->mt,624,p,bytes);
@@ -100,11 +100,19 @@ static void words(FILE *f,const char *name,const uint32_t *p,unsigned count) {
     unsigned i;fprintf(f,"%s",name);for(i=0;i<count;i++)fprintf(f," %08x",p[i]);fputc('\n',f);
 }
 int ND_Dump(unsigned at,uint64_t local,uint64_t remote,uint64_t build,uint64_t data,int host,int role,int peer,void (*context)(FILE *)) {
-    FILE *f;unsigned t,start,end,i,p,j;
+    FILE *f;unsigned t,start,end,i,p,j;char path[4096];
+    const char *settings=getenv("BT3_SETTINGS"),*cut=NULL,*cursor;
     if(!ND_Enabled()||captured)return 0;
-    captured=1;f=fopen("net-desync.txt","w");if(!f){fprintf(stderr,"net diagnostic: could not write net-desync.txt\n");return 0;}
-    fprintf(f,"net-desync-v2 build=%016llx data=%016llx round=%u host=%d role=%d peer_role=%d mismatch_frame=%u current_frame=%u branches=%u local=%016llx remote=%016llx\n",(unsigned long long)build,(unsigned long long)data,roundNumber,host,role,peer,at,lastFrame,branches,(unsigned long long)local,(unsigned long long)remote);
-    fprintf(f,"schema actor words: chara costume hp maxHp ki blast action target player lockedOff clash fused controller next seconds swap revive helper assist power posX posY posZ posW rotX rotY rotZ rotW; floats are raw IEEE bits. header: actorCount sequenceState clock reserved. extra_rng: mtIndex sceneRand fighterRand vu0R. mt: 624 state words. rng: libc64 low/high. lobby: fingerprint low/high. States are at tick entry BEFORE that tick's inputs. Missing records and masks mean unavailable, not zero.\n");
+    captured=1;
+    if(settings)for(cursor=settings;*cursor;cursor++)if(*cursor=='/' || *cursor=='\\')cut=cursor;
+    if(cut && (size_t)(cut-settings+1)>sizeof(path)-sizeof("net-desync.txt")) {
+        fprintf(stderr,"net diagnostic: report path is too long\n");return 0;
+    }
+    if(cut)snprintf(path,sizeof(path),"%.*snet-desync.txt",(int)(cut-settings+1),settings);
+    else snprintf(path,sizeof(path),"net-desync.txt");
+    f=fopen(path,"w");if(!f){fprintf(stderr,"net diagnostic: could not write net-desync.txt\n");return 0;}
+    fprintf(f,"net-desync-v3 build=%016llx data=%016llx round=%u host=%d role=%d peer_role=%d mismatch_frame=%u current_frame=%u branches=%u local=%016llx remote=%016llx\n",(unsigned long long)build,(unsigned long long)data,roundNumber,host,role,peer,at,lastFrame,branches,(unsigned long long)local,(unsigned long long)remote);
+    fprintf(f,"schema actor words: chara costume hp maxHp ki blast action target player lockedOff clash fused controller next seconds swap revive helper assist power team posX posY posZ posW rotX rotY rotZ rotW; floats are raw IEEE bits. header: actorCount sequenceState clock reserved teamCount winningTeam. Legacy four-word headers omit teamCount/winningTeam and legacy 28-word actors omit team. extra_rng: mtIndex sceneRand fighterRand vu0R. mt: 624 state words. rng: libc64 low/high. lobby: fingerprint low/high. States are at tick entry BEFORE that tick's inputs. Missing records and masks mean unavailable, not zero.\n");
     if(context)context(f);
     fprintf(f,"rng_schema kinds=1:libc-next,2:libc-seed,3:vu0-float01,4:vu0-seed,5:mt-next,6:libc-wrapper,7:libc-range,8:vu0-range,9:mt-range phases=0:idle,1:net-tick,2:setup,3:audio,4:ai-input,5:fighters,6:effects-update,7:loaders,8:stage-update,9:camera,10:visibility,11:mechanics,12:view-prep,13:draw-world,14:draw-fighters,15:draw-effects,16:hud,17:overlay,18:frame-end. Events belong to the interval AFTER tick entry. Wrapper kinds describe callers and are not extra generator advances. Site overflow and overwritten events are explicit.\n");
     fprintf(f,"rng_storage event_capacity=%u site_capacity_per_tick=%u bytes=%llu\n",ND_RNG_EVENTS,ND_RNG_SITES,(unsigned long long)(sizeof(history)+sizeof(rngEvents)+sizeof(initial)+sizeof(seedEvents)));

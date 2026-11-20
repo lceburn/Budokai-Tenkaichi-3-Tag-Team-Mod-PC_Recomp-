@@ -24,6 +24,19 @@ To turn this capture off, close the game and create an empty **disable-net-diagn
 
 ## Report contents and time semantics
 
+Multi-team integration retains the bounded RNG/state capture as
+`net-desync-v3`. Its match header additionally records the number of teams and
+winning team, and each fighter's checksum state includes team membership. The
+comparison tool still reads the older v1/v2 four-word-header captures and
+reconstructs both layouts' checksums. Use matching versions and symbols on all
+participating computers.
+
+The upstream room protocol also exchanges a small semantic mismatch snapshot
+between the participating peers and writes `tagnet-report.txt`. That report
+does not replace `net-desync.txt` or the local RNG history. Preserve both reports
+and `game.log` if available. The bounded RNG recorder itself does not transmit
+its history or upload files.
+
 - Build identity, game-data fingerprint, room round/revision, local and peer roles, mismatch tick and local/remote checksums.
 - Rules, roster/costume/controller assignments, CPU levels, items and synchronized option values, without IP addresses or player names.
 - The exact checksum components: match header, every fighter's identity, health/ki/blast, action, target/controller/lock-off, fusion/revival/assist fields, position/rotation float bits, libc RNG and lobby fingerprint.

@@ -166,7 +166,7 @@ def main():
                    platform=args.platform+'-x86_64', release_sequence=args.release_sequence)
     release['creator'] = {'schema': 1, 'source': 'local-bt4', 'online_custom': False}
     if args.effect_diagnostic:release['diagnostic']='rematch-effect-lifecycle-v1'
-    if args.net_diagnostic:release['diagnostic']='network-desync-v2'
+    if args.net_diagnostic:release['diagnostic']='network-desync-v3'
     if args.experimental_startup:
         release.update(experimental=True, startup_verification='install-time-checksum')
     (payload / 'release.json').write_text(json.dumps(release)+'\n')

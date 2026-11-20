@@ -1077,6 +1077,9 @@ PORT_HOST static s32 onlineSavedZoom,onlineSavedZoomOn;
 PORT_HOST static Mtx44 onlineSavedBase[2],onlineSavedZoomed[2];
 static unsigned long long onlineSavedRandom;
 extern unsigned long long gPortRandNext;
+/* (the vector unit's generator as well: what a copy draws must not move what it simulates) */
+static unsigned onlineSavedFloatRandom;
+extern unsigned gPortVu0R;
 extern s32 BtlScene_IsSingleView(void);
 extern void BtlScene_SetSingleView(s32);
 s32 TagOnline_PresentationActor(s32 fallback) { return onlineDrawing?onlineActor:fallback; }
@@ -1094,7 +1097,7 @@ s32 TagOnline_BeginDraw(void) {
         actor=0;
 found:  actor=TagFusion_Owner(actor);
     }
-    onlineActor=actor;onlineSavedRandom=gPortRandNext;
+    onlineActor=actor;onlineSavedRandom=gPortRandNext;onlineSavedFloatRandom=gPortVu0R;
     onlineSavedView=nativeViews[0];onlineSavedCurrent=gBtlCam->cur;onlineSavedMatrix=gBtlCamView;
     onlineSavedZoom=sPortZoomView[0];onlineSavedZoomOn=sPortZoomOn[0];
     memcpy(onlineSavedBase,sPortBase[0],sizeof(onlineSavedBase));
@@ -1138,7 +1141,7 @@ void TagOnline_EndDraw(void) {
     memcpy(sPortBase[0],onlineSavedBase,sizeof(onlineSavedBase));
     memcpy(sPortZoomed[0],onlineSavedZoomed,sizeof(onlineSavedZoomed));
     nativeSharedActor=onlineSavedActor;BtlScene_SetSingleView(onlineSavedSingle);View_Apply(gBtlCamView,0);onlineDrawing=0;
-    gPortRandNext=onlineSavedRandom;
+    gPortRandNext=onlineSavedRandom;gPortVu0R=onlineSavedFloatRandom;
 }
 PORT_HOST static BtlCamView *spectatorSavedCurrent;
 PORT_HOST static View *spectatorSavedMatrix;
