@@ -419,3 +419,10 @@ restores the local library. A two-client local Windows test passed 600 confirmed
 frames with creator mode enabled and four custom forms present. This is not an
 internet/LAN regression guarantee or custom-character network support. The
 rematch crash-fix implementation and prior desync diagnostics are retained.
+
+Older signed checkers update program files using their own embedded updater.
+The new Play.exe also checks for an unprepared BT4 creator cache after that
+update and starts the newly installed checker in local preparation mode. It
+then resumes the same launcher. If preparation fails, ordinary play remains
+available for that launch and preparation retries next time. This avoids
+requiring an extra launcher or a separate creator install for previous releases.

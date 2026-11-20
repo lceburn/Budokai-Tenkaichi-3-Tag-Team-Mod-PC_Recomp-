@@ -32,7 +32,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR args, int show
 
     /* Run a temporary copy so the updater can replace this launcher and itself.
        The helper starts Play.exe --skip-update after completing or declining. */
-    if (wcscmp(args, L"--skip-update") != 0 && wcslen(root) < 15000) {
+    if (wcscmp(args, L"--skip-update") != 0 && wcscmp(args, L"--creator-unavailable") != 0 && wcslen(root) < 15000) {
         wchar_t helper[32768], temp[32768], copy[32768];
         swprintf(helper,32768,L"%ls\\CheckUpdates.exe",root);
         if (GetFileAttributesW(helper) != INVALID_FILE_ATTRIBUTES && GetTempPathW(32768,temp) && wcslen(temp)<32000) {
@@ -52,6 +52,28 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR args, int show
                 return error(L"An update check is already running. Finish it before starting another copy.");
             }
             DeleteFileW(copy);
+        }
+    }
+
+    /* Older signed updaters install new program files using their own older
+       update module. Prepare the local BT4 creator cache on first launch too,
+       including Play --skip-update after that older helper finishes. */
+    if (wcscmp(args, L"--creator-unavailable") != 0 && wcslen(root) < 15000) {
+        wchar_t roster[32768], cache[32768], helper[32768], temp[32768], copy[32768];
+        swprintf(roster,32768,L"%ls\\gamedata\\native-roster.tsv",root);
+        swprintf(cache,32768,L"%ls\\gamedata\\warrior-sources\\creator-cache.json",root);
+        swprintf(helper,32768,L"%ls\\CheckUpdates.exe",root);
+        if (GetFileAttributesW(roster)!=INVALID_FILE_ATTRIBUTES && GetFileAttributesW(cache)==INVALID_FILE_ATTRIBUTES &&
+            GetFileAttributesW(helper)!=INVALID_FILE_ATTRIBUTES && GetTempPathW(32768,temp) && wcslen(temp)<32000) {
+            swprintf(copy,32768,L"%lsTagTeam-CreatorPrepareRunner.exe",temp);
+            if (!CopyFileW(helper,copy,FALSE))
+                return error(L"Creator preparation is already running, or its temporary program could not be written.");
+            if(wcslen(copy)+wcslen(root)+100>=32772)return error(L"The installation path is too long for creator preparation.");
+            swprintf(command,32772,L"\"%ls\" --game-folder \"%ls\" --prepare-creator --launch",copy,root);
+            start.cb=sizeof(start);
+            if(!CreateProcessW(copy,command,NULL,NULL,FALSE,CREATE_NO_WINDOW,NULL,root,&start,&process))
+                return error(L"Could not start local creator preparation. Keep CheckUpdates.exe beside Play.exe.");
+            CloseHandle(process.hThread);CloseHandle(process.hProcess);return 0;
         }
     }
 

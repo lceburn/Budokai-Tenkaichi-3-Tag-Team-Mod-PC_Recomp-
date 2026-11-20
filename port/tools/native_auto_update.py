@@ -148,6 +148,31 @@ def verified_payload(data, signature, destination, expected_size, expected_diges
     return payload
 
 
+def prepare_creator(target):
+    """First-launch migration for installations updated by an older checker."""
+    import tkinter as tk
+    from tkinter import messagebox, ttk
+    import native_creator_install
+    target = Path(target).resolve()
+    win = tk.Tk(); win.title('Preparing Z Warriors'); win.geometry('620x170')
+    status = ttk.Label(win, text='Preparing character creator from your own BT4 data. Your saves are kept.', wraplength=570)
+    status.pack(padx=20, pady=35); win.protocol('WM_DELETE_WINDOW', lambda: None); win.update()
+    try:
+        with updater.update_lock(target):
+            updater.ensure_closed(target, setup.platform_name())
+            def progress(text):
+                status.configure(text=text); win.update()
+            native_creator_install.ensure(target / 'gamedata', progress=progress)
+        return True
+    except Exception as error:
+        (target / 'creator-preparation.log').write_text(traceback.format_exc(), encoding='utf-8')
+        messagebox.showerror('Character creator preparation', str(error) +
+            '\n\nThe game can start without the creator for this launch. Preparation will retry next time.')
+        return False
+    finally:
+        win.destroy()
+
+
 def run(target, force=False):
     """The launcher hands off before starting the engine; an offline failure never blocks play."""
     import tkinter as tk
@@ -198,9 +223,14 @@ if __name__ == '__main__':
     parser.add_argument('--game-folder', type=Path, required=True)
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--launch', action='store_true')
+    parser.add_argument('--prepare-creator', action='store_true')
     args=parser.parse_args()
+    prepared = not args.prepare_creator
     try:
-        run(args.game_folder,args.check)
+        if args.prepare_creator:
+            prepared = prepare_creator(args.game_folder)
+        else:
+            run(args.game_folder,args.check)
     finally:
         if args.launch:
-            subprocess.Popen([str(args.game_folder.resolve()/'Play.exe'),'--skip-update'],cwd=args.game_folder.resolve())
+            subprocess.Popen([str(args.game_folder.resolve()/'Play.exe'),'--skip-update' if prepared else '--creator-unavailable'],cwd=args.game_folder.resolve())
