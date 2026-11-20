@@ -9,7 +9,8 @@ extern void BtlChar_ClearFlag(struct BtlActIChr *,s32);
 
 static void spend_transform_cost(BtlActHChr *chr) {
 #ifdef PORT
-    if (PortGame_IsBT4()) {
+    if (PortGame_UsesBT4Rules(BtlMember_GetActive(chr)->chara) &&
+        !PortGame_IsCustomCharacter(BtlMember_GetActive(chr)->chara)) {
         extern s32 BtlMember_DrainKi(BtlActHChr *,s32);
         extern void BtlMember_SubMaxPower(BtlActHChr *,s32);
         if (BtlChar_TestFlag(chr,6))

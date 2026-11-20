@@ -2,6 +2,7 @@
 import os, pathlib, subprocess, time, argparse, re
 p=argparse.ArgumentParser()
 p.add_argument('--bt4', action='store_true')
+p.add_argument('--creator', action='store_true', help='Keep native creator enabled while testing disc-only online fighters')
 p.add_argument('--exe',type=pathlib.Path,help='Native executable to exercise')
 p.add_argument('--data',type=pathlib.Path,help='Imported disc folder (including regional profiles)')
 p.add_argument('--party', action='store_true', help='Persistent practice lobby transport')
@@ -46,6 +47,7 @@ env.update(BT3_TAG_TEAM='1', BT3_TAG_ONLINE='1', BT3_TAG_AUTO_READY='1',
            BT3_TAG_TEST_PLAYERS=str(a.players),
            BT3_DATA=str((a.data or root/('gamedata-bt4' if a.bt4 else 'gamedata')).resolve()),
            BT3_NOSOUND='1', BT3_GS='none', BT3_UPDATE_CHECK='0', BT3_TEST_FRAMES='0')
+if a.creator:env['BT3_WARRIOR_MODELS']='1'
 if a.disconnect or a.kick:env['BT3_TAG_SAVE_CHECK']='1'
 if a.kick:
     assert a.party and a.players>=3

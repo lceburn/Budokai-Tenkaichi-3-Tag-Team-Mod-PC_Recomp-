@@ -108,6 +108,9 @@ ChrViewInfo *ChrView_GetCharaInfo(u32 chara) {
     if (chara >= PortGame_CharacterCount()) {
         return NULL;
     }
+#ifdef PORT
+    chara=PortGame_TableCharacter(chara);
+#endif
     return &table[chara];
 }
 
@@ -387,7 +390,7 @@ void ChrView_Init(void) {
     for (i = 0; i < CHRVIEW_SLOT_COUNT; i++) {
         gChrView->slot[i].file[0].buf = Heap_Alloc(
 #ifdef PORT
-            PortGame_IsBT4() ? 0xE6800 :
+            PortGame_IsBT4() ? PortGame_ModelCapacity() :
 #endif
             CHRVIEW_MODEL_SIZE, 0x40, 0, HEAP_ANY);
         gChrView->slot[i].file[0].size = 0;

@@ -11,7 +11,9 @@
  */
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include "plat_warriors.h"
 extern void Port_StateTouch(void *p, unsigned long n); /* gs/state.c */
 
 extern const char *Port_FileRoot(void); /* plat_file.c: BT3_DATA or "gamedata" */
@@ -20,6 +22,17 @@ enum { SLOTS = 32 };
 static struct { char rel[128]; FILE *fp; long size; unsigned long used; } sSlot[SLOTS];
 static unsigned long sClock;
 static volatile int sLock;
+
+/* A completed offline creator job may replace generated files at the main menu.
+   Close old host handles before publishing, without touching native disc files. */
+void Port_FileWarriorClose(void) {
+    int i;
+    while(__sync_lock_test_and_set(&sLock,1)){}
+    for(i=0;i<SLOTS;i++)if(sSlot[i].fp && !strncmp(sSlot[i].rel,"zwarriors/",10)) {
+        fclose(sSlot[i].fp);memset(&sSlot[i],0,sizeof(sSlot[i]));
+    }
+    __sync_lock_release(&sLock);
+}
 
 /* Opens the host file the game gets for `rel` (its path under the data root) and says which it is: a stage or a
    song added from outside the disc (the stage / song list names the file), else the file under mods/, else the
@@ -30,6 +43,13 @@ FILE *Port_FileOpenHost(const char *rel, char *path, size_t n) {
     extern int PortSongs_Alias(const char *rel, char *out, unsigned n);  /* plat_songs.c: the same for a song */
     char target[256];
     FILE *fp = NULL;
+
+    /* A generated warrior has an explicit resource identity. A missing
+       resource must not silently load an unrelated file from the disc. */
+    {
+        int warrior=PortWarriors_Alias(rel,path,(unsigned)n);
+        if(warrior)return warrior>0?fopen(path,"rb"):NULL;
+    }
 
     /* a stage added from outside the disc: the game asks for a file id past the disc's own, and the file is
        the one the stage list names (plat_stages.c), under the data folder */

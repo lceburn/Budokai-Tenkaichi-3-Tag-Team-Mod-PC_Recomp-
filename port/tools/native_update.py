@@ -13,6 +13,7 @@ import threading
 
 import native_setup as setup
 import native_tables
+import native_creator_install
 
 ROOT_FILES = {'Play.exe', 'Play.sh', 'CheckUpdates.exe', 'Read me.txt', 'Tag Team Mod Logo.png',
               'a11y_es.txt', 'release.json', 'installation.json'}
@@ -171,6 +172,7 @@ def update(target, payload=setup.PAYLOAD, iso=None, progress=print):
         if platform=='linux':extra['Play.sh']=setup.PLAY_LINUX.encode('utf-8')
         needed=sum((payload/n).stat().st_size for n in files)*2+sum(map(len,extra.values()))*2+16*1024*1024
         if shutil.disk_usage(target).free<needed:raise ValueError('Not enough free space to safely stage and back up this update.')
+        native_creator_install.ensure(target / 'gamedata', bool(release.get('creator')), progress)
         work.mkdir()
         (work/'new').mkdir();(work/'old').mkdir()
         journal={'complete':False,'files':{}}

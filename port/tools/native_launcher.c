@@ -75,6 +75,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR args, int show
     SetEnvironmentVariableW(L"BT3_MENU_ITEM4", L"0");
     swprintf(path, 32768, L"%ls\\gamedata", root);
     SetEnvironmentVariableW(L"BT3_DATA", path);
+    swprintf(path, 32768, L"%ls\\gamedata\\warrior-sources\\creator-cache.json", root);
+    if (GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES) {
+        SetEnvironmentVariableW(L"BT3_WARRIOR_MODELS", L"1");
+        SetEnvironmentVariableW(L"BT3_WARRIOR_NATIVE_HEAD_TEST", L"1");
+        SetEnvironmentVariableW(L"BT3_WARRIOR_NATIVE_HAND_TEST", L"1");
+        SetEnvironmentVariableW(L"BT3_WARRIOR_NATIVE_BODY_TEST", L"1");
+    }
+
     swprintf(path, 32768, L"%ls\\saves", root);
     SetEnvironmentVariableW(L"BT3_SAVES", path);
     swprintf(path, 32768, L"%ls\\settings.txt", root);

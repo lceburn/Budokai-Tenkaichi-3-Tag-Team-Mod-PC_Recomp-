@@ -175,6 +175,11 @@ extern MenuProgress *gProgress;
 #else
 #define MAINMENU_ITEM_MAX 11
 #endif
+#ifdef PORT
+#define MAINMENU_ITEM_CAPACITY (MAINMENU_ITEM_MAX+1)
+#else
+#define MAINMENU_ITEM_CAPACITY MAINMENU_ITEM_MAX
+#endif
 #define MAINMENU_FLASH_NUM 1    /* the code loops over the movies although there is one: see menu_a.c */
 #define MAINMENU_ROWS 4        /* plates the cursor can be on */
 
@@ -190,7 +195,7 @@ typedef struct MainMenu {
     /* 0x10C */ s32 cursor;         /* row the cursor is on, 0..3 */
     /* 0x110 */ s32 timer;          /* frames until the fade out starts after a choice */
     /* 0x114 */ s32 voiceLine;      /* subtitle line shown by the message window, -1 = none */
-    /* 0x118 */ s32 items[MAINMENU_ITEM_MAX]; /* item ids in list order */
+    /* 0x118 */ s32 items[MAINMENU_ITEM_CAPACITY]; /* item ids in list order */
     /* 0x144 */ s32 itemCount;
     /* 0x148 */ s32 top;            /* list index of the plate above the first row (the list is a ring) */
     /* 0x14C */ s32 unk14C;

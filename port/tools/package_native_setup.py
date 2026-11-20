@@ -119,6 +119,10 @@ def main():
         'Double-click the game picture or press Alt+Enter to switch fullscreen. F11 also works.\n'
         'F1 opens graphics, controller, language and mod settings. Online modes are in the game menu.\n'
         'Mod Settings > Controls changes target, lock-off and menu buttons. F1 > Controls changes keyboard and gamepad bindings.\n'
+        'BT4 includes Z Warriors: create, confirm previews, save and play custom fighters offline.\n'
+        'Ordinary disc fighters remain available in native online rooms. Custom fighters are excluded online.\n'
+        'Creator sources are prepared from your local BT4 data during installation/update; no BT3 creator is needed.\n'
+        'The current roster limit is four custom forms total, including transformations. Advanced reference features remain incomplete.\n'
         'Your saves are in saves/. Setup copies imported saves; it never changes the original.\n'
         'English and Spanish mod menus are included. Disc audio comes from your selected disc.\n'
         'BT3: USA, Europe/Australia, Japan. BT4: B14 REV2 English and Spanish.\n\n'
@@ -127,6 +131,7 @@ def main():
                 for p in sorted(payload.rglob('*')) if p.is_file() and p.name != 'manifest.json'}
     release = dict(version=f'beta.{args.version}' + ('-experimental' if args.experimental_startup else ''),
                    platform=args.platform+'-x86_64', release_sequence=args.release_sequence)
+    release['creator'] = {'schema': 1, 'source': 'local-bt4', 'online_custom': False}
     if args.effect_diagnostic:release['diagnostic']='rematch-effect-lifecycle-v1'
     if args.net_diagnostic:release['diagnostic']='network-desync-v2'
     if args.experimental_startup:

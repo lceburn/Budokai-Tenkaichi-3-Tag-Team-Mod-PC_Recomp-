@@ -72,7 +72,7 @@ static void music_label(s32 id,f32 x,f32 y,f32 w,f32 h,s32 lit) {
     else {name(2,id,label,sizeof(label));text(x+w/2,Ps_TextTop(y+h/2,0.7f),label,0.7f,w,3);}
 }
 static void portrait(s32 id,f32 x,f32 y,f32 w,f32 h) {
-    MTexRes *pic;if(id<0||id>=PortGame_CharacterCount())return;
+    MTexRes *pic;if(id<0||id>=PortGame_CharacterCount() || PortGame_IsCustomCharacter(id))return;
     pic=(MTexRes *)MPACK_AT(chipPack,id+1);texture(pic,x,y,w,h);
 }
 static void stage_preview(f32 x,f32 y,f32 w,f32 h) {
@@ -559,7 +559,7 @@ void TagOnlineMenu_Open(void) {
     icons=MPACK_AT(duelArt,24);Res_RelocateOffsets(&icons,icons,icons);IconWin_Init(MPACK_AT(duelArt,23),icons);IconWin_PortHideWords();IconWin_Open();
     selectArt=Sprite_Unpack(MPACK_AT(gMenuArc5,2),NULL,NULL);chipPack=MPACK_AT(selectArt,45);stagePack=MPACK_AT(selectArt,46);
     for(i=0;i<2;i++){pic=(MTexRes *)MPACK_AT(selectArt,4-i);Res_RelocateOffsets(&pic,pic,pic);musicArt[i]=pic;}
-    for(i=0;i<PortGame_CharacterCount();i++)if(PortGame_IsCharacter(i)){pic=(MTexRes *)MPACK_AT(chipPack,i+1);Res_RelocateOffsets(&pic,pic,pic);}
+    for(i=0;i<PortGame_CharacterCount() && i<(s32)((u32 *)chipPack)[0];i++)if(PortGame_IsCharacter(i)){pic=(MTexRes *)MPACK_AT(chipPack,i+1);Res_RelocateOffsets(&pic,pic,pic);}
     for(i=0;i<PortGame_StageCount();i++)if(i!=35){pic=(MTexRes *)MPACK_AT(stagePack,i+1);Res_RelocateOffsets(&pic,pic,pic);}
     Pad_SetRepeat(20,5);Bgm_Play(0x10B16+2);ColorFade_StartIn(0,0,0,12);
 }

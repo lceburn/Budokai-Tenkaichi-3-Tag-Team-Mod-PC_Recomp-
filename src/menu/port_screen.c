@@ -633,6 +633,10 @@ s32 PortScreen_Main(void) {
         gMenuArc5 = File_LoadSync(gProgress->baseFile, NULL, 0);
     }
     switch (screen) {
+    case PORT_SCREEN_WARRIORS:
+        { extern s32 PortZw_Run(void);
+          Bgm_Play(0x10B16+2);result=PortZw_Run();Adx_StopAll();gProgress->mode=result?45:4; }
+        break;
     case PORT_SCREEN_TAG_TEAM:
         { extern s32 TagSession_Run(void);
           Bgm_Play(0x10B16+2); result=TagSession_Run(); Adx_StopAll(); }

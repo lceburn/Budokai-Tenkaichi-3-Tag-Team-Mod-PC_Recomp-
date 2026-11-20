@@ -1,5 +1,7 @@
 /* Native BT4 B14 REV2 resource profile. No game assets are embedded here. */
 #include "plat_game.h"
+#include "plat_warriors.h"
+#include "warrior_limits.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +22,7 @@ static signed char voiceBanks[2][250];
 static int damaged_available(int c,int outfit);
 static unsigned char extraCustom[250-97][56];
 static int customLoaded;
+static int onlineCustom;
 
 static void fail(const char *message) {
     fprintf(stderr, "native disc: %s\n", message);
@@ -96,13 +99,134 @@ int PortGame_VolumeCount(int volume) {
     if(volume<0 || volume>=(bt4?4:3))return 0;
     return bt4?bt4Counts[volume]-(spanish && volume==2):bt3Counts[volume];
 }
-int PortGame_CharacterCount(void) { return PortGame_IsBT4() ? 250 : 161; }
+static int warrior_count(void) {
+    int n;
+    if(!PortGame_IsBT4() || !PortGame_WarriorModelsEnabled() || onlineCustom)return 0;
+    n=PortWarriors_Count();
+    if(PortWarriors_Error())fail(PortWarriors_Error());
+    if(n>PORT_WARRIOR_PLAYABLE_MAX)fail("This import prototype supports at most four playable custom forms.");
+    return n;
+}
+int PortGame_IsCustomCharacter(int c) {
+    return c>=PORT_WARRIOR_FIRST_CHARACTER && c<PORT_WARRIOR_FIRST_CHARACTER+warrior_count();
+}
+int PortGame_CharacterCount(void) { return PortGame_IsBT4() ? 250+warrior_count() : 161; }
+static int warrior_named_donor(int c,int voice) {
+    const char *name;int i;
+    name=voice?PortWarriors_VoiceName(c-250):PortWarriors_TemplateName(c-250);
+    if(name)for(i=0;i<250;i++)if(names[i][0] && !strcmp(name,names[i]))return i;
+    fail("A custom warrior's named donor is absent from this disc roster.");return -1;
+}
+int PortGame_TableCharacter(int c) {
+    return PortGame_IsCustomCharacter(c)?warrior_named_donor(c,0):c;
+}
+int PortGame_UsesBT4Rules(int c) {
+    return PortGame_IsBT4() && (!PortGame_IsCustomCharacter(c) || PortWarriors_UsesBT4Rules(c-250));
+}
+void *PortGame_GaugeTable(void *original) {
+    static unsigned char *table;
+    int n=warrior_count(),i;
+    if(!n)return original;
+    if(!table)table=Port_LowAlloc((250+PORT_WARRIOR_PLAYABLE_MAX)*16);
+    if(!table)fail("Could not allocate custom warrior gauge table.");
+    memcpy(table,original,250*16);
+    for(i=0;i<n;i++)memcpy(table+(250+i)*16,(unsigned char *)original+PortGame_TableCharacter(250+i)*16,16);
+    return table;
+}
+static int warrior_file(int c,int role) {
+    return PORT_WARRIOR_FILE_BASE+(c-250)*PORT_WARRIOR_FILE_STRIDE+role;
+}
+int PortGame_CheckPortraitHeader(const void *header,int headerSize,int fileSize) {
+    const unsigned char *p=header;
+    if(!p || headerSize<8 || fileSize<8 || fileSize>0x16800)return 0;
+    return u32(p)>=0x60 && u32(p)<=0x20800 && u32(p+4)<=(unsigned)fileSize-8;
+}
+int PortGame_WarriorPortraitValid(int c) {
+    unsigned char header[8];char relative[64],path[1600];FILE *f;long size;int valid;
+    if(!PortGame_IsCustomCharacter(c))return 0;
+    snprintf(relative,sizeof(relative),"zwarriors/%d/%d.bin",c-250,PORT_WARRIOR_PORTRAIT);
+    if(PortWarriors_Alias(relative,path,sizeof(path))!=1 || !(f=fopen(path,"rb")))return 0;
+    fseek(f,0,SEEK_END);size=ftell(f);rewind(f);
+    valid=fread(header,1,8,f)==8 && size<=0x16800 &&
+          PortGame_CheckPortraitHeader(header,8,(int)size);
+    fclose(f);return valid;
+}
+int PortGame_MenuPortrait(int c) {
+    if(PortGame_IsCustomCharacter(c)) {
+        if(PortGame_WarriorPortraitValid(c))return warrior_file(c,PORT_WARRIOR_PORTRAIT);
+        c=PortGame_TableCharacter(c);
+    }
+    return (PortGame_IsBT4()?0x71C:0x2F9)+c;
+}
+int PortGame_CheckWarriorChip(const void *data,int size) {
+    const unsigned char *p=data,*e;unsigned at,pixels,palette;
+    uint64_t tex;
+    if(!p || size!=5504 || u32(p)!=1 || u32(p+4)!=8)return 0;
+    at=u32(p+4)*4;e=p+at;
+    if(u32(e)>5504/4 || u32(e+4)>5504/4)return 0;
+    pixels=u32(e)*4;palette=u32(e+4)*4;
+    if(pixels<96 || pixels>5504 || palette<96 || palette>5504 ||
+       u32(e+8)>5504-pixels || u32(e+12)>5504-palette ||
+       u32(e+8)<4096+96 || u32(e+12)<1024+96)return 0;
+    tex=u32(e+48)|((uint64_t)u32(e+52)<<32);
+    return ((tex>>26)&15)==6 && ((tex>>30)&15)==6 && ((tex>>20)&63)==19;
+}
+int PortGame_WarriorChip(int c) {
+    unsigned char data[5505];char relative[64],path[1600];FILE *f;size_t size;
+    if(!PortGame_IsCustomCharacter(c))return -1;
+    snprintf(relative,sizeof(relative),"zwarriors/%d/%d.bin",c-250,PORT_WARRIOR_CHIP);
+    if(PortWarriors_Alias(relative,path,sizeof(path))!=1 || !(f=fopen(path,"rb")))return -1;
+    size=fread(data,1,sizeof(data),f);fclose(f);
+    return PortGame_CheckWarriorChip(data,(int)size)?warrior_file(c,PORT_WARRIOR_CHIP):-1;
+}
+int PortGame_WarriorGrid(void *cells,int count,int capacity) {
+    int (*grid)[9]=cells,groups[PORT_WARRIOR_PLAYABLE_MAX],n=warrior_count();
+    int i,j,k,end=count,added=0,padded,changed;
+    if(!n || !grid || count<0 || count>capacity)return count;
+    for(i=0;i<n;i++)groups[i]=i;
+    /* Treat supported links as undirected for selection grouping. The battle
+       still exposes only the explicitly declared, directed transformations. */
+    do {
+        changed=0;
+        for(i=0;i<n;i++)for(j=0;j<4;j++) {
+            int target=PortGame_WarriorFormTarget(250+i,j)-250,low,high;
+            if(target<0 || target>=n || groups[target]==groups[i])continue;
+            low=groups[i]<groups[target]?groups[i]:groups[target];
+            high=groups[i]>groups[target]?groups[i]:groups[target];
+            for(k=0;k<n;k++)if(groups[k]==high)groups[k]=low;
+            changed=1;
+        }
+    }while(changed);
+    for(i=0;i<n;i++)if(groups[i]==i)added++;
+    while(end>0 && grid[end-1][0]==164)end--; /* native filler marker */
+    padded=(end+added+6)/7*7;
+    if(padded>capacity)return count; /* No partial writes on a full roster. */
+    for(i=0;i<n;i++)if(groups[i]==i) {
+        int forms=0;memset(grid[end],0,sizeof(grid[end]));grid[end][0]=250+i;
+        for(j=0;j<n;j++)if(groups[j]==i)grid[end][2+forms++]=250+j;
+        grid[end][1]=forms>1?forms:0;end++;
+    }
+    while(end<padded){memset(grid[end],0,sizeof(grid[end]));grid[end++][0]=164;}
+    return padded;
+}
 int PortGame_IsCharacter(int c) {
+    if(PortGame_IsCustomCharacter(c))return 1;
     return PortGame_IsBT4() ? c>=0 && c<250 && (c<161 || c>164) && costumes[c]!=0 : c>=0 && c<161;
+}
+/* Network loadouts are limited to disc fighters even outside a scoped menu. */
+int PortGame_IsOnlineCharacter(int c) {
+    return c>=0 && c<(PortGame_IsBT4()?250:161) && PortGame_IsCharacter(c);
 }
 int PortGame_StageCount(void) { return PortGame_IsBT4()?99:36; }
 const char *PortGame_CharacterName(int c) {
+    if(PortGame_IsCustomCharacter(c))return PortWarriors_Name(c-250);
     return PortGame_IsBT4() && c>=0 && c<250 && names[c][0]?names[c]:NULL;
+}
+const char *PortGame_WarriorAttackName(int c,int slot) {
+    return PortGame_IsCustomCharacter(c)?PortWarriors_AttackName(c-250,slot):NULL;
+}
+int PortGame_WarriorAuraColour(int c) {
+    return PortGame_IsCustomCharacter(c)?PortWarriors_AuraColour(c-250):-1;
 }
 static int musicIds[256],musicCount=-1;
 int PortGame_MusicCount(void) {
@@ -131,6 +255,7 @@ int PortGame_StreamFile(int id) {
     return id;
 }
 int PortGame_Costumes(int c) {
+    if(PortGame_IsCustomCharacter(c))return PortWarriors_Costumes(c-250);
     if(PortGame_IsBT4())return c>=0 && c<250 ? costumes[c] : 0;
     if(c>=0 && c<161) {
         static int loaded;
@@ -150,6 +275,10 @@ int PortGame_Costumes(int c) {
     return 0;
 }
 int PortGame_Model(int c, int outfit, int damaged) {
+    if(PortGame_IsCustomCharacter(c)) {
+        if(outfit<0 || outfit>=PortWarriors_Costumes(c-250))fail("Invalid custom warrior costume.");
+        return warrior_file(c,PortWarriors_ModelRole(outfit,damaged));
+    }
     if (!PortGame_IsBT4()) return 1424+c*10+outfit+(damaged?4:0);
     if (c<0 || c>=250 || !costumes[c] || outfit<0 || outfit>=costumes[c]) {
         fprintf(stderr,"native disc: model request fighter=%d costume=%d damaged=%d\n",c,outfit,damaged);
@@ -175,6 +304,8 @@ static int damaged_available(int c,int outfit) {
 }
 int PortGame_ModelCharacter(int id) {
     int i;
+    if(id>=PORT_WARRIOR_FILE_BASE && id<PORT_WARRIOR_FILE_BASE+warrior_count()*PORT_WARRIOR_FILE_STRIDE)
+        return 250+(id-PORT_WARRIOR_FILE_BASE)/PORT_WARRIOR_FILE_STRIDE;
     if (!PortGame_IsBT4()) return (id-1424)/10;
     for (i=0; i<250; ++i) if (id>=models[i] && id<models[i+1]) return i;
     return -1;
@@ -191,8 +322,8 @@ void PortGame_RepairModelBody(void *body,int size,int model) {
     for(i=0;i<0x314/4;i++)words[i]-=0x1e450u;
     words[0x314/4]=words[0x2b4/4]^0x80000000u;
 }
-int PortGame_Animation(int c) { return PortGame_IsBT4()?5150+c:1432+c*10; }
-int PortGame_Combat(int c) { return PortGame_IsBT4()?5400+c:1433+c*10; }
+int PortGame_Animation(int c) { return PortGame_IsCustomCharacter(c)?warrior_file(c,PORT_WARRIOR_ANIMATION):PortGame_IsBT4()?5150+c:1432+c*10; }
+int PortGame_Combat(int c) { return PortGame_IsCustomCharacter(c)?warrior_file(c,PORT_WARRIOR_EFFECTS):PortGame_IsBT4()?5400+c:1433+c*10; }
 static int voice_bank_available(int c,int jp) {
     if(!voiceBanks[jp][c]) {
         unsigned char header[20];char path[128];FILE *f;long size;unsigned i,prev;
@@ -215,6 +346,7 @@ static int voice_bank_available(int c,int jp) {
     return voiceBanks[jp][c]>0;
 }
 int PortGame_Voice(int c,int jp) {
+    if(PortGame_IsCustomCharacter(c))c=warrior_named_donor(c,1);
     if(!PortGame_IsBT4()) return c+(jp?3195:3034);
     if(c<0 || c>=250) fail("Invalid BT4 voice character.");
     jp=jp!=0;
@@ -227,19 +359,84 @@ int PortGame_Voice(int c,int jp) {
     return c+(jp?0x1D10C:0x1D012);
 }
 int PortGame_VoiceLine(int c,int line,int jp) {
+    if(PortGame_IsCustomCharacter(c))c=warrior_named_donor(c,1);
     return (PortGame_IsBT4()?(jp?0x16E6A:0x10CC2):(jp?0xCC32:0x8D4E))+100*c+line;
 }
-int PortGame_Member(int c,int side) { return (PortGame_IsBT4()?0xD48:8)+c*2+side; }
+int PortGame_Member(int c,int side) {
+    if(PortGame_IsCustomCharacter(c))return warrior_file(c,PORT_WARRIOR_MEMBER_1+(side!=0));
+    return (PortGame_IsBT4()?0xD48:8)+c*2+side;
+}
 int PortGame_Partition(int id) {
+    if(id>=PORT_WARRIOR_FILE_BASE)return 7;
     if (PortGame_IsBT4()) return id>=0x20000?3:id>=0x10CC0?0:id>=0xD48?2:id>0?1:0;
     return id<=0?0:id<0xD48?1:2;
 }
 int PortGame_FileIndex(int id) {
+    if(id>=PORT_WARRIOR_FILE_BASE)return id-PORT_WARRIOR_FILE_BASE;
     if (PortGame_IsBT4()) return id>=0x20000?id-0x20000:id>=0x10CC0?id-0x10CC0:id>=0xD48?id-0xD48:id>0?id-1:id;
     return id<=0?id:id<0xD48?id-1:id-0xD48;
 }
 /* These tables are immutable apart from the game's idempotent relocation of
    the first metadata section. Keep them alive across model changes and menus. */
+int PortGame_WarriorModelsEnabled(void) {
+    const char *enabled = getenv("BT3_WARRIOR_MODELS");
+    return enabled && !strcmp(enabled,"1");
+}
+int PortGame_ModelCapacity(void) {
+    return PortGame_WarriorModelsEnabled()?PORT_WARRIOR_MODEL_CAPACITY:0xE6800;
+}
+int PortGame_WarriorFormTarget(int chara,int slot) {
+    int index=chara-PORT_WARRIOR_FIRST_CHARACTER,target;
+    if(!PortGame_IsCustomCharacter(chara) || slot<0 || slot>=4)return 0xFF;
+    target=PortWarriors_FormTarget(index,slot);
+    /* First supported manifest family: cost, standard sequence, basic change,
+       no prop override, preserve damage. Other families remain unavailable. */
+    if(target<0 || target==index || !PortGame_IsCustomCharacter(250+target) ||
+       PortWarriors_FormField(index,slot,0)<0 || PortWarriors_FormField(index,slot,0)>5 ||
+       PortWarriors_FormField(index,slot,1)!=0 || PortWarriors_FormField(index,slot,2)!=2 ||
+       PortWarriors_FormField(index,slot,3)!=-1 || PortWarriors_FormField(index,slot,4)!=0)return 0xFF;
+    return 250+target;
+}
+int PortGame_WarriorFormField(int chara,int slot,int field) {
+    if(PortGame_WarriorFormTarget(chara,slot)==0xFF || field<0 || field>=5)return -1;
+    return PortWarriors_FormField(chara-250,slot,field);
+}
+int PortGame_UseEmbeddedModel(const void *data, int size) {
+    const unsigned char *p = data;
+    unsigned count, i, offset, tableEnd;
+    /* This switch is for the isolated import prototype. Normal BT4 models
+       continue to use their disc's separate metadata without inspecting them. */
+    if (!PortGame_WarriorModelsEnabled() || !p || size<12) return 0;
+    count=u32(p);
+    /* The generated samples carry the BT3 model's 252-entry layout, including
+       parameters, AI and both lip tables. Do not infer it from a filename. */
+    if((count!=252 && count!=253) || (unsigned)size<(count+2)*4) return 0;
+    tableEnd=(count+2)*4;
+    for(i=1;i<=count+1;i++) {
+        offset=u32(p+i*4)&~3u;
+        if(offset && (offset<tableEnd || offset>(unsigned)size)) return 0;
+    }
+    if(count==253) {
+        unsigned start=u32(p+253*4)&~3u,end=u32(p+254*4)&~3u;
+        if(start<tableEnd || end<start || end-start<16 ||
+           (memcmp(p+start,"BT3WARRI",8) && memcmp(p+start,"BT4WARRI",8)))return 0;
+    }
+    /* An empty parameter record is not a self-contained model. All readers
+       of the first parameter block need at least the original 0x100 bytes. */
+    offset=u32(p+4)&~3u;
+    if(!offset || offset==(u32(p+8)&~3u) || (unsigned)size-offset<0x100) return 0;
+    for(i=2;i<=count+1;i++) {
+        unsigned next=u32(p+i*4)&~3u;
+        if(next>offset && next-offset<0x100) return 0;
+    }
+    return 1;
+}
+
+int PortGame_EmbeddedBT4(const void *data,int size) {
+    const unsigned char *p=data;
+    return PortGame_UseEmbeddedModel(data,size) && u32(p)==253 &&
+        !memcmp(p+(u32(p+253*4)&~3u),"BT4WARRI",8);
+}
 void *PortGame_Metadata(int c,int kind) {
     char path[128];
     FILE *f;
@@ -266,6 +463,8 @@ static void custom_path(char *path,size_t capacity,const char *suffix) {
     snprintf(path,capacity,"%s/native-bt4-custom%s",root?root:"saves",suffix);
 }
 void *PortGame_CustomSlot(void *original,int slot) {
+    static unsigned char warriorCustom[PORT_WARRIOR_PLAYABLE_MAX][56];
+    if(PortGame_IsCustomCharacter(slot))return warriorCustom[slot-250];
     if(slot<0 || slot>=(PortGame_IsBT4()?250:97)) fail("Invalid equipment slot.");
     if(slot<97) return (unsigned char *)original+slot*56;
     if(!customLoaded) {
@@ -282,7 +481,7 @@ void *PortGame_CustomSlot(void *original,int slot) {
     return extraCustom[slot-97];
 }
 static unsigned char offlineCustom[sizeof(extraCustom)];
-static int onlineCustom,offlineCustomLoaded;
+static int offlineCustomLoaded;
 void PortGame_OnlineCustom(int enter) {
     if(!PortGame_IsBT4())return;
     if(enter && !onlineCustom) {
@@ -359,4 +558,53 @@ int PortGame_CheckAnimation(void *data,int size) {
         if(invalid) {b[at]=b[at+1]=0;bad++;}
     }
     return (int)bad;
+}
+
+int PortGame_AdjustWarriorAnimation(const void *model,int modelSize,int motion,void *animation,int animationSize) {
+    const unsigned char *m=model,*table;
+    unsigned char *a=animation;
+    unsigned start,end,count,i,j,seen[71],seenCount=0;
+    float scale;
+    if(!PortGame_UseEmbeddedModel(model,modelSize) || motion<0 || motion>=414 ||
+       !a || animationSize<148 || animationSize>PortGame_AnimationCapacity()) return 0;
+    i=u32(m)==253?253:26;
+    start=u32(m+i*4)&~3u;end=u32(m+(i+1)*4)&~3u;
+    if(!start || end<start || end-start<16) return 0;
+    table=m+start;
+    if(memcmp(table,"BT3WARRI",8) && memcmp(table,"BT4WARRI",8)) return 0;
+    count=u32(table+12);
+    if(count>(end-start-16)/8) return -1;
+    memcpy(&scale,table+8,4);
+    /* The extension stores a default body/motion ratio followed by
+       {u16 firstMotion,u16 motionCount,f32 ratio} overrides. */
+    for(i=0;i<count;i++) {
+        const unsigned char *row=table+16+8*i;
+        unsigned first=row[0]|(unsigned)row[1]<<8,n=row[2]|(unsigned)row[3]<<8;
+        float ratio;
+        memcpy(&ratio,row+4,4);
+        if(!n || first>=414 || n>414-first || !(ratio>0.0f && ratio<=16.0f)) return -1;
+        if((unsigned)motion>=first && (unsigned)motion-first<n) scale=ratio;
+    }
+    if(!(scale>0.0f && scale<=16.0f)) return -1;
+    /* Validate every translation track before modifying any. Tracks may be
+       shared by node IDs, so each offset must be scaled only once. */
+    for(i=0;i<71;i++) {
+        unsigned off=(a[6+2*i]|(unsigned)a[7+2*i]<<8)*4,n,flags;
+        if(!off) continue;
+        if(off<148+16u*a[1] || off>(unsigned)animationSize-4) return -1;
+        flags=a[off]|(unsigned)a[off+1]<<8;n=a[off+2]|(unsigned)a[off+3]<<8;
+        if(flags&1) continue;
+        if(!n || n>((unsigned)animationSize-off-4)/24) return -1;
+        for(j=0;j<seenCount && seen[j]!=off;j++) {}
+        if(j==seenCount) seen[seenCount++]=off;
+    }
+    for(i=0;i<seenCount;i++) {
+        unsigned off=seen[i],n=a[off+2]|(unsigned)a[off+3]<<8,k;
+        for(j=0;j<n;j++) for(k=0;k<3;k++) {
+            float value;
+            unsigned char *p=a+off+4+j*24+k*4;
+            memcpy(&value,p,4);value*=scale;memcpy(p,&value,4);
+        }
+    }
+    return 1;
 }

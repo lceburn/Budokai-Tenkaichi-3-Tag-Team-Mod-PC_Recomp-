@@ -198,7 +198,7 @@ static int local_produces(unsigned at) {
 static int event_add(const PracticeEvent *e) {
     unsigned n=eventCount;PracticeEvent *next;
     if(e->member<1 || e->member>=TL_MEMBERS || e->kind<0 || e->kind>2 || e->present<0 || e->present>1 ||
-       !PortGame_IsCharacter(e->fighter.chara) || e->fighter.costume<0 || e->fighter.costume>=PortGame_Costumes(e->fighter.chara) ||
+       !PortGame_IsOnlineCharacter(e->fighter.chara) || e->fighter.costume<0 || e->fighter.costume>=PortGame_Costumes(e->fighter.chara) ||
        (n && e->at<practiceEvents[n-1].at))return 0;
     {int k;for(k=0;k<8;k++)if(e->fighter.items[k]<0 || e->fighter.items[k]>350)return 0;}
     if(n==eventCapacity) {
@@ -376,7 +376,7 @@ static int valid(const TagNetConfig *c) {
     if(c->party<0 || c->party>1 || c->practice<0 || c->practice>1 || c->mode<0 || c->mode>TL_TOURNAMENT || c->preset<0 || c->preset>127 || c->heal<0 || c->heal>4)return 0;
     if(c->party)for(i=0;i<TL_MEMBERS;i++) {
         const TlMember *m=&c->lobby.members[i];int k;
-        if(m->present<0 || m->present>1 || !PortGame_IsCharacter(m->loadout.chara) ||
+        if(m->present<0 || m->present>1 || !PortGame_IsOnlineCharacter(m->loadout.chara) ||
            m->loadout.costume<0 || m->loadout.costume>=PortGame_Costumes(m->loadout.chara))return 0;
         for(k=0;k<8;k++)if(m->loadout.items[k]<0 || m->loadout.items[k]>350)return 0;
     }
@@ -386,7 +386,7 @@ static int valid(const TagNetConfig *c) {
     }
     for(i=0;i<n;i++) {
         int k;
-        if(!PortGame_IsCharacter(c->chara[i]) || c->costume[i]<0 || c->costume[i]>=PortGame_Costumes(c->chara[i]) || c->owner[i]<-1 || c->owner[i]>=TN_PLAYERS)return 0;
+        if(!PortGame_IsOnlineCharacter(c->chara[i]) || c->costume[i]<0 || c->costume[i]>=PortGame_Costumes(c->chara[i]) || c->owner[i]<-1 || c->owner[i]>=TN_PLAYERS)return 0;
         if(c->cpuLevel[i]<-1 || c->cpuLevel[i]>4)return 0;
         for(k=0;k<8;k++)if(c->items[i][k]<0 || c->items[i][k]>350)return 0;
         if(c->owner[i]>=0)owners[c->owner[i]]++;
@@ -531,7 +531,7 @@ static int begin_tournament(void) {
     }
     if(TlTournament_Build(&tournament,&d)!=TL_OK){say("Each tournament team needs between one and five fighters.");return 0;}
     for(i=tournament.entered;i<8;i++)for(k=0;k<tournament.count[i];k++) {
-        int id;do{seed=seed*1664525u+1013904223u;id=(int)(seed%(unsigned)PortGame_CharacterCount());}while(!PortGame_IsCharacter(id));
+        int id;do{seed=seed*1664525u+1013904223u;id=(int)(seed%(unsigned)PortGame_CharacterCount());}while(!PortGame_IsOnlineCharacter(id));
         tournament.fighters[i][k].chara=id;tournament.fighters[i][k].costume=0;memset(tournament.fighters[i][k].items,0,sizeof(tournament.fighters[i][k].items));
     }
     tournament_match();say("Tournament drawn. Ready for the next match, or skip a CPU match.");return 1;
@@ -681,7 +681,7 @@ static void handle(Peer *p,int type,const unsigned char *data,unsigned n) {
         if(t.active<0 || t.active>2 || t.match<0 || t.match>7 || t.entered<0 || t.entered>4)return;
         if(t.active) {
             for(i=0;i<8;i++){if(t.count[i]<1 || t.count[i]>5)return;for(k=0;k<t.count[i];k++) {
-                TlLoadout *f=&t.fighters[i][k];int j;if(!PortGame_IsCharacter(f->chara) || f->costume<0 || f->costume>=PortGame_Costumes(f->chara) || t.owner[i][k]<-1 || t.owner[i][k]>=TN_PLAYERS || t.cpu[i][k]<0 || t.cpu[i][k]>4)return;
+                TlLoadout *f=&t.fighters[i][k];int j;if(!PortGame_IsOnlineCharacter(f->chara) || f->costume<0 || f->costume>=PortGame_Costumes(f->chara) || t.owner[i][k]<-1 || t.owner[i][k]>=TN_PLAYERS || t.cpu[i][k]<0 || t.cpu[i][k]>4)return;
                 for(j=0;j<8;j++)if(f->items[j]<0 || f->items[j]>350)return;
             }}
             for(i=0;i<7;i++)if(t.left[i]<-1 || t.left[i]>7 || t.right[i]<-1 || t.right[i]>7 || t.winner[i]<-1 || t.winner[i]>7)return;
@@ -730,7 +730,7 @@ static void handle(Peer *p,int type,const unsigned char *data,unsigned n) {
         practice_event(p->role,1,1);
     } else if(type==TN_PRACTICE_LOADOUT && host && TagNet_IsPractice() && n==4+sizeof(TlLoadout) && get32(data)==roundId && p->role>0 && p->role<TL_MEMBERS && produces(p->role,frame)) {
         TlLoadout f;int k;for(k=0;k<sizeof(f)/4;k++)((unsigned *)&f)[k]=get32(data+4+k*4);
-        if(!PortGame_IsCharacter(f.chara) || f.costume<0 || f.costume>=PortGame_Costumes(f.chara))return;
+        if(!PortGame_IsOnlineCharacter(f.chara) || f.costume<0 || f.costume>=PortGame_Costumes(f.chara))return;
         for(k=0;k<8;k++)if(f.items[k]<0 || f.items[k]>350)return;
         partyRoom.members[p->role].loadout=f;practice_event(p->role,1,2);
     } else if(type==TN_GO && !host && phase==3 && n==4 && get32(data)==roundId) {go=1;

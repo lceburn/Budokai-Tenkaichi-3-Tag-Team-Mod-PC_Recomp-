@@ -7,6 +7,15 @@
 #include "sys/heap.h"
 #include "sys/adx.h"
 #include "sys/pad.h"
+#ifdef PORT
+#include "plat_game.h"
+extern s32 Hud_NativeActor(s32 side),BtlCharApi_GetChara(s32 actor),Port_HudSwap(void);
+extern void Font_PrintAsciiAt(s32 x,s32 y,char *text);
+static const char *BtlText_WarriorName(s32 side,s32 slot) {
+    if(side<0 || side>1 || slot<0 || slot>=5)return NULL;
+    return PortGame_WarriorAttackName(BtlCharApi_GetChara(Hud_NativeActor(side)),slot);
+}
+#endif
 
 /* ---- Skill-list text of the pause menu, 0x215420-0x216AC0 ----
  * The list is a UTF-16 script. Every line starts with two characters whose second one is a hex digit (a mask
@@ -281,6 +290,14 @@ void BtlText_DrawList(void *pkt, s32 x0, s32 x1, s32 y0, s32 y1, s32 mode) {
                         Font_SetColorRGBA(BTLTEXT_COL(255.0f), BTLTEXT_COL(255.0f), BTLTEXT_COL(255.0f), 0x80);
                         Font_SetShadowColorRGBA(BTLTEXT_COL(32.0f), BTLTEXT_COL(43.0f), BTLTEXT_COL(94.0f), 0x40);
                     }
+#ifdef PORT
+                    /* The special-technique page has the two Blast 1 entries,
+                       the two Blast 2 entries, then the ultimate. Other pages
+                       and stock characters keep their original script text. */
+                    const char *custom=list->page==0?BtlText_WarriorName(side,entry):NULL;
+                    if(custom)Font_PrintAsciiAt(x0+0xF,y+3,(char *)custom);
+                    else {
+#endif
                     fit = Font_FitScale(p + 2, (x1 - x0) - 0x44);
                     if (fit < 1.0f) {
                         Font_PushStyle();
@@ -291,6 +308,9 @@ void BtlText_DrawList(void *pkt, s32 x0, s32 x1, s32 y0, s32 y1, s32 mode) {
                     } else {
                         Font_PrintAt(x0 + 0xF, y + 3, p + 4);
                     }
+#ifdef PORT
+                    }
+#endif
                     h = lineH - 2;
                     if (entry == list->cursor[list->page]) {
                         BtlText_DrawPart(pkt, x0 - 1, y, h, 0x1F, 0x11);
@@ -506,6 +526,9 @@ u16 *BtlText_FindEntry(s32 n) {
 /* Draws the name of entry n at (x, y); align 0 / 1 / other picks the font alignment 0 / 2 / 1. */
 void BtlText_DrawEntryName(s32 x, s32 y, s32 n, s32 align, f32 alpha) {
     u16 *str = BtlText_FindEntry(n);
+#ifdef PORT
+    const char *custom=align==0 || align==1?BtlText_WarriorName(align^Port_HudSwap(),n):NULL;
+#endif
 
     if (str != NULL) {
         s32 font = Font_GetCmdCount();
@@ -528,6 +551,9 @@ void BtlText_DrawEntryName(s32 x, s32 y, s32 n, s32 align, f32 alpha) {
             Font_SetAlign(1);
             break;
         }
+#ifdef PORT
+        if(custom)Font_PrintAsciiAt(x,y,(char *)custom);else
+#endif
         Font_PrintAt(x, y, str);
         Font_PopStyle();
         Font_Flush(font);
@@ -829,6 +855,9 @@ s32 BtlSeqIntroTalk_Setup(BtlSeqTalkCtx *ctx) {
     u8 *tbl0 = obj0->talkTbl;
     BtlSeqObj *obj1 = BtlObj_Get(BattleSide_GetObjId(1));
     u8 *tbl1 = obj1->talkTbl;
+#ifdef PORT
+    if(PortGame_IsCustomCharacter(obj0->chara) || PortGame_IsCustomCharacter(obj1->chara))tbl0=tbl1=NULL;
+#endif
 
     if (tbl0 != NULL && tbl1 != NULL) {
         if (tbl0[obj1->chara * 4] != 0xFF) {
@@ -877,7 +906,8 @@ static void setup_extra_intro(BtlSeqTalkCtx *ctx,s32 slot,s32 actor) {
     ctx->side[slot]=actor;ctx->chara[slot]=extra->chara;
     for(j=0;j<TagTeam_Count();j++) if(!TagChallenge_Hidden(j) && TagTeam_IsEnemy(actor,j)) {
         BtlSeqObj *enemy=BtlObj_Get(BattleSide_GetObjId(j));
-        if(!extra->talkTbl || !enemy || enemy->chara<0 || enemy->chara>=PortGame_CharacterCount())continue;
+        if(!extra->talkTbl || !enemy || enemy->chara<0 || enemy->chara>=PortGame_CharacterCount() ||
+           PortGame_IsCustomCharacter(enemy->chara) || PortGame_IsCustomCharacter(extra->chara))continue;
         if(extra->talkTbl[enemy->chara*4]==0xFF)continue;
         for(k=0;k<count;k++)if(opponents[k]==enemy->chara)break;
         if(k==count)opponents[count++]=enemy->chara;
@@ -1088,6 +1118,9 @@ s32 BtlSeqWinTalk_Setup(BtlSeqTalkCtx *ctx) {
     u8 *winTbl = winObj->talkTbl;
     BtlSeqObj *loseObj = BtlObj_Get(BattleSide_GetObjId(loser));
     u8 *loseTbl = loseObj->talkTbl;
+#ifdef PORT
+    if(PortGame_IsCustomCharacter(winObj->chara) || PortGame_IsCustomCharacter(loseObj->chara))winTbl=loseTbl=NULL;
+#endif
 
     if (BattleResult_IsPlayerWin()) {
         if (winTbl == NULL || loseTbl == NULL || BtlCharApi_HasMemberUnk70(winner) || BtlCharApi_HasMemberUnk70(loser)) {

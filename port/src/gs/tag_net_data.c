@@ -131,6 +131,8 @@ static int SDLCALL check_worker(void *unused) {
 }
 unsigned long long TagNet_DataIdentity(void) {
     Uint64 began=SDL_GetTicks();cancelled=0;
+    /* Online loadouts accept disc fighters only; local creator libraries do
+       not participate in the room's resource identity. */
     if(!PortGame_IsBT4()) {
         unsigned long long h=0;
         while(Port_DataFingerprint(&h)!=1 && SDL_GetTicks()-began<120000) {

@@ -152,7 +152,9 @@ static void portrait_path(int side, int slot, int chara, int costume) {
     if (!PortGame_IsCharacter(chara)) {
         return;
     }
-    id = (PortGame_IsBT4()?1820:FACE_FILE) + chara;
+    /* The prototype uses the donor portrait until custom portrait routing is
+       connected to the HUD. Never index beyond the disc's portrait list. */
+    id = (PortGame_IsBT4()?1820:FACE_FILE) + PortGame_TableCharacter(chara);
     if (!Port_FilePath(1, id - 1, NULL, sPath[side][slot], FP_PATH)) {
         sPath[side][slot][0] = '\0';
     }
@@ -210,6 +212,8 @@ static void read_side(FpState *st, int side) {
         const uint16_t *names = at != 0 ? (const uint16_t *)Port_Ptr(at) : NULL;
         for (i = 0; i < FP_MOVES; i++) {
             entry_name(names, i, s->moves[i].name, (int)sizeof(s->moves[i].name));
+            const char *custom=PortGame_WarriorAttackName(objChara,i);
+            if(custom)snprintf(s->moves[i].name,sizeof(s->moves[i].name),"%s",custom);
             s->moves[i].cost = s->moves[i].name[0] == '\0' ? 0 : i < 2 ? BtlSkill_GetBlastCost(chr, i) : BtlSuper_GetKiCost(chr, i);
         }
     }

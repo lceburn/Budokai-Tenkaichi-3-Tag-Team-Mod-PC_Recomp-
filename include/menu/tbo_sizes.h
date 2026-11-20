@@ -25,6 +25,15 @@ static const u16 sTboSize[TBO_ART_COUNT][3] = {
     {256, 256, 0}, /* btn_circle */
     {289, 120, 0}, /* btn_start */
     {2420, 2728, 0}, /* radar */
+    {1376, 768, 0}, /* zw_bg: private reference artwork, not included in source */
+    {218, 220, 0}, /* zw_emblem */
+    {1000, 90, 40}, /* zw_bar */
+    {1000, 110, 40}, /* zw_bar_sel */
+    {1200, 150, 50}, /* zw_dialog */
+    {513, 720, 0}, /* zw_kk_point */
+    {503, 260, 0}, /* zw_platform */
+    {420, 80, 35}, /* zw_pill */
+    {420, 80, 35}, /* zw_pill_steel */
 };
 
 #endif

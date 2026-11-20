@@ -133,6 +133,19 @@ extern void *BtlTask_CreateChildList(EftNTask *task, s32 count, s32 workSize);
 extern EftNTask *BtlTaskList_AddTail(void *list, void *cls, void *arg);
 extern s32 BtlCharApi_ObjGetParamFlags0(s32 objId);
 extern s32 BtlCharApi_GetAuraType(s32 objId);
+#ifdef PORT
+extern s32 BtlCharApi_GetChara(s32 objId);
+extern s32 PortGame_WarriorAuraColour(s32 chara);
+/* Match the reference's brightness-preserving tint; alpha and emitter
+   behaviour remain properties of the selected aura preset. */
+static void WarriorAura_Tint(Vec4 *colour,f32 red,f32 green,f32 blue,f32 white) {
+    f32 peak=colour->x;
+    if(colour->y>peak)peak=colour->y;if(colour->z>peak)peak=colour->z;
+    colour->x=(red+(1.0f-red)*white)*peak;
+    colour->y=(green+(1.0f-green)*white)*peak;
+    colour->z=(blue+(1.0f-blue)*white)*peak;
+}
+#endif
 extern f32 BtlCharApi_GetHeight(s32 objId);
 extern void BtlCharApi_GetNodePos(s32 objId, s32 node, Vec4 *out);
 extern s32 BtlCharApi_IsModelNew(s32 objId);
@@ -535,6 +548,27 @@ void EftAura_SetType(EftAuraWork *aura, s32 objId, s32 type, s32 paramFlags) {
     }
     multi = aura->flags & 0x80;
     EftAura_LoadColors(aura, alt, multi);
+#ifdef PORT
+    {
+        s32 rgb=PortGame_WarriorAuraColour(BtlCharApi_GetChara(objId));
+        static s32 traced[4];
+        if(objId>=0 && objId<4 && !traced[objId] && getenv("BT3_WARRIOR_TRACE")) {
+            traced[objId]=1;printf("warrior aura tint: object=%d character=%d colour=%06x\n",objId,BtlCharApi_GetChara(objId),rgb);
+        }
+        if(rgb>0) {
+            f32 red=rgb&255,green=(rgb>>8)&255,blue=(rgb>>16)&255,peak=red;s32 i;
+            if(green>peak)peak=green;if(blue>peak)peak=blue;if(peak<1.0f)peak=1.0f;
+            red/=peak;green/=peak;blue/=peak;
+            WarriorAura_Tint(&aura->colorStart,red,green,blue,.15f);
+            WarriorAura_Tint(&aura->colorEnd,red,green,blue,0.0f);
+            for(i=0;i<4;i++) {
+                WarriorAura_Tint(&aura->colorAlt[i],red,green,blue,.1f);
+                WarriorAura_Tint(&aura->sparkColor[i],red,green,blue,.6f);
+                WarriorAura_Tint(&aura->sparkColorAlt[i],red,green,blue,.4f);
+            }
+        }
+    }
+#endif
 }
 
 /* Reads the fighter's aura type and height: called at creation and again every frame. */

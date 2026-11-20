@@ -1328,11 +1328,15 @@ s32 BtlParam_ScaleKiCharge(BtlTechChr *chr, s32 val) {
 /* Parameter +0x10: flag word. */
 u32 BtlParam_GetFlags(BtlTechChr *chr) {
 #ifdef PORT
-    if (PortGame_IsBT4()) {
+    if (PortGame_UsesBT4Rules(BtlChar_GetObj(chr)->chara)) {
         /* BT4 moved the four character flag words to common file 2, part 12. */
         u32 *pack = gCommonRes->data[0];
         if (pack[12] == pack[13]) return 0;
-        return ((u32 *)((u8 *)pack + (pack[12] & ~3u)))[BtlChar_GetObj(chr)->chara * 4 + 1];
+        /* Generated identities are beyond the 250 stock rows. Their style
+           donor supplies this external table, not the custom slot number. */
+        s32 donor=PortGame_TableCharacter(BtlChar_GetObj(chr)->chara);
+        if(donor<0 || donor>=250)return 0;
+        return ((u32 *)((u8 *)pack + (pack[12] & ~3u)))[donor * 4 + 1];
     }
 #endif
     return BtlChar_GetObj(chr)->param->flags;
@@ -1360,36 +1364,56 @@ s32 BtlParam_GetUnk2(BtlTechChr *chr) {
 
 /* Parameter +0xAC: the transformation slot a neutral input picks. */
 s32 BtlParam_GetUnkAC(BtlTechChr *chr) {
+#ifdef PORT
+    if(PortGame_IsCustomCharacter(BtlChar_GetObj(chr)->chara)) {
+        s32 i;for(i=0;i<4;i++)if(PortGame_WarriorFormTarget(BtlChar_GetObj(chr)->chara,i)!=0xFF)return i;
+        return -1;
+    }
+#endif
     return BtlChar_GetObj(chr)->param->transDefault;
 }
 
 /* Parameter +0x98 + slot: transformation target, 0xFF = none. */
 s32 BtlParam_GetSlotId(BtlTechChr *chr, s32 slot) {
+#ifdef PORT
+    if(PortGame_IsCustomCharacter(BtlChar_GetObj(chr)->chara))return PortGame_WarriorFormTarget(BtlChar_GetObj(chr)->chara,slot);
+#endif
     return BtlChar_GetObj(chr)->param->transTarget[slot];
 }
 
 /* Parameter +0x9C + slot, times 100000: blast gauge a transformation costs. */
 s32 BtlParam_GetSlotCost(BtlTechChr *chr, s32 slot) {
 #ifdef PORT
-    if (PortGame_IsBT4()) return BtlChar_GetObj(chr)->param->transCost[slot] * 20000;
+    if(PortGame_IsCustomCharacter(BtlChar_GetObj(chr)->chara)) {
+        s32 cost=PortGame_WarriorFormField(BtlChar_GetObj(chr)->chara,slot,0);
+        return cost<0?0:cost*100000;
+    }
+    if (PortGame_UsesBT4Rules(BtlChar_GetObj(chr)->chara)) return BtlChar_GetObj(chr)->param->transCost[slot] * 20000;
 #endif
     return BtlChar_GetObj(chr)->param->transCost[slot] * 100000;
 }
 
 /* Parameter +0xA0 + slot. */
 s32 BtlParam_GetSlotA0(BtlTechChr *chr, s32 slot) {
+#ifdef PORT
+    if(PortGame_IsCustomCharacter(BtlChar_GetObj(chr)->chara))return 0;
+#endif
     return BtlChar_GetObj(chr)->param->transSeq[slot];
 }
 
 /* Parameter +0xA4 + slot. */
 s32 BtlParam_GetSlotA4(BtlTechChr *chr, s32 slot) {
+#ifdef PORT
+    if(PortGame_IsCustomCharacter(BtlChar_GetObj(chr)->chara))return 2;
+#endif
     return BtlChar_GetObj(chr)->param->transKind[slot];
 }
 
 /* Parameter +0xA8 + slot. */
 s32 BtlParam_GetSlotA8(BtlTechChr *chr, s32 slot) {
 #ifdef PORT
-    if (PortGame_IsBT4()) return ((s16 *)((u8 *)BtlChar_GetObj(chr)->param + 0xCC))[slot];
+    if(PortGame_IsCustomCharacter(BtlChar_GetObj(chr)->chara))return 0xFF;
+    if (PortGame_UsesBT4Rules(BtlChar_GetObj(chr)->chara)) return ((s16 *)((u8 *)BtlChar_GetObj(chr)->param + 0xCC))[slot];
 #endif
     return BtlChar_GetObj(chr)->param->transA8[slot];
 }
@@ -1402,6 +1426,9 @@ s32 BtlParam_GetTransformPropCostume(BtlTechChr *chr,s32 slot) {
 
 /* Parameter +0xAD. */
 s32 BtlParam_GetUnkAD(BtlTechChr *chr) {
+#ifdef PORT
+    if(PortGame_IsCustomCharacter(BtlChar_GetObj(chr)->chara))return 0;
+#endif
     return BtlChar_GetObj(chr)->param->unkAD;
 }
 
@@ -1410,6 +1437,12 @@ s32 BtlParam_CountSlots(BtlTechChr *chr) {
     BtlParam *param = BtlChar_GetObj(chr)->param;
     s32 n = 0;
     s32 i;
+#ifdef PORT
+    if(PortGame_IsCustomCharacter(BtlChar_GetObj(chr)->chara)) {
+        for(i=0;i<4;i++)if(PortGame_WarriorFormTarget(BtlChar_GetObj(chr)->chara,i)!=0xFF)n++;
+        return n;
+    }
+#endif
 
     for (i = 0; i < 4; i++) {
         if (param->transTarget[i] != 0xFF) {
@@ -1421,6 +1454,9 @@ s32 BtlParam_CountSlots(BtlTechChr *chr) {
 
 /* Bit 4 + n of parameter +0xAD. */
 s32 BtlParam_TestUnkADBit(BtlTechChr *chr, s32 n) {
+#ifdef PORT
+    if(PortGame_IsCustomCharacter(BtlChar_GetObj(chr)->chara))return 0;
+#endif
     return (BtlChar_GetObj(chr)->param->unkAD & (0x10 << n)) != 0;
 }
 
@@ -1497,7 +1533,7 @@ s32 BtlParam_GetType(BtlTechChr *chr) {
     }
     type = param->searchType[costume];
 #ifdef PORT
-    if (PortGame_IsBT4()) type = (s8)BtlChar_GetObj(chr)->modelInfo[0x355];
+    if (PortGame_UsesBT4Rules(BtlChar_GetObj(chr)->chara)) type = (s8)BtlChar_GetObj(chr)->modelInfo[0x355];
 #endif
     switch (type) {
         case 2:

@@ -117,6 +117,7 @@ volatile int gPortSpecMenuAsk;
 extern "C" void Port_UiNotice(const char *text);
 static void spec_view_next(void);               // watching a match: the next view (player 1, player 2, both)
 void ModsUi_Tab(void);                          // gs/mods_ui.cpp: the settings window's Mods tab
+void WarriorEditor_Tab(void);                   // gs/warrior_editor.cpp: experimental recipe editing
 void ModsUi_Draw(void);                         // ... the script mods' shapes over the picture
 extern "C" int Mods_HudActive(void);            // gs/mods.c: they drew something at the last blank
 static const char *spec_view_name(int view);
@@ -2331,7 +2332,8 @@ static void build(void) {
         open = false;
     }
     if (sForceTab < 0 && (pad_pressed(ImGuiKey_GamepadL1) || pad_pressed(ImGuiKey_GamepadR1))) {
-        const int tabCount = getenv("BT3_TAG_TEAM") ? 12 : 11;
+        const bool warriorEditor=getenv("BT3_WARRIOR_MODELS") && !strcmp(getenv("BT3_WARRIOR_MODELS"),"1");
+        const int tabCount = (getenv("BT3_TAG_TEAM") ? 12 : 11) + (warriorEditor ? 1 : 0);
         sForceTab = (sTab + (ImGui::IsKeyPressed(ImGuiKey_GamepadL1, false) ? tabCount - 1 : 1)) % tabCount;
         sPadTab = true;
     }
@@ -2430,6 +2432,9 @@ static void build(void) {
             if (tab("Misc", 6)) { misc_tab(); ImGui::EndTabItem(); }
             if (tab("Online", 7)) { online_tab(); ImGui::EndTabItem(); }
             if (tab("Mods", 8)) { ModsUi_Tab(); ImGui::EndTabItem(); }
+            if (getenv("BT3_WARRIOR_MODELS") && !strcmp(getenv("BT3_WARRIOR_MODELS"),"1") && tab("Warriors",getenv("BT3_TAG_TEAM")?12:11)) {
+                WarriorEditor_Tab(); ImGui::EndTabItem();
+            }
             if (tab("Spectator", getenv("BT3_TAG_TEAM") ? 11 : 10)) { spectator_tab(); ImGui::EndTabItem(); }
             if (tab("Tech", 9)) { tech_tab(); ImGui::EndTabItem(); }
             if (getenv("BT3_TAG_TEAM") && tab(Port_TagText("Mod Settings"), 10)) {

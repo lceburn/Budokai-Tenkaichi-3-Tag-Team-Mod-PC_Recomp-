@@ -22,6 +22,9 @@
  * one file here because their constants are contiguous (.rodata 0x2F23F0..0x2F2420, .lit4 0x2FE630..0x2FE640).
  */
 #include "common.h"
+#ifdef PORT
+#include "plat_warriors.h"
+#endif
 #include "battle/btl_obj.h"
 #include "battle/battle.h"
 #include "battle/btl_cam.h"
@@ -468,6 +471,12 @@ void BtlObj_Setup(BtlObj *obj, s32 type, BtlResSlot *res, s32 id, s32 active) {
     obj->active = active;
     obj->id = id;
     obj->chara = PortGame_ModelCharacter(res->file[0].id);
+#ifdef PORT
+    {
+        extern void BtlObj_ApplyWarriorAura(void *object);
+        BtlObj_ApplyWarriorAura(obj);
+    }
+#endif
     BtlObj_InitChains(obj);
 }
 
@@ -633,6 +642,10 @@ void BtlObj_UpdateBounds(BtlObj *obj, BtlObjState *state) {
             } else {
                 part->active = 0;
             }
+#ifdef PORT
+            if(PortGame_IsCustomCharacter(obj->chara))
+                PortWarriors_TraceNode(obj->chara,part->unk08,part->active,&part->mtx);
+#endif
         }
         if (bound->last != 0) {
             return;
@@ -1217,11 +1230,11 @@ void BtlRes_Init(s32 prealloc) {
     res->prealloc = prealloc;
     if (prealloc != 0) {
         for (i = 0; i < BTL_RES_FIXED_MAX + 1; i++) {
-            res->spare[i].buf = Heap_Alloc((PortGame_IsBT4()?0xE6800:BTL_RES_MODEL_SIZE), 0x40, 0, HEAP_ANY);
+            res->spare[i].buf = Heap_Alloc((PortGame_IsBT4()?PortGame_ModelCapacity():BTL_RES_MODEL_SIZE), 0x40, 0, HEAP_ANY);
             res->spare[i].size = 0;
             res->spare[i].id = -1;
             res->spare[i].orig = res->spare[i].buf;
-            memset(res->spare[i].buf, 0, (PortGame_IsBT4()?0xE6800:BTL_RES_MODEL_SIZE));
+            memset(res->spare[i].buf, 0, (PortGame_IsBT4()?PortGame_ModelCapacity():BTL_RES_MODEL_SIZE));
         }
         for (i = 0; i < BTL_RES_FIXED_MAX; i++) {
             slot = &res->fixed[i];

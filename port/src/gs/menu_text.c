@@ -1105,6 +1105,7 @@ typedef struct TagWave {const char *name;int level,count;TagWaveFighter fighters
 typedef struct TagGauntlet {const char *name;int bt4,count,capacity;const TagWave *waves;} TagGauntlet;
 #include "../../../src/battle/tag_gauntlets.inc"
 static unsigned char *sItemPic[2];
+static unsigned char *sWarriorPic[1][2];
 static unsigned char *sTagPic[TAG_LABEL_COUNT][2];
 static unsigned char sTagIndices[TAG_LABEL_COUNT][2][512*32];
 static unsigned char sTagPalette[2][1024], sTagCached[TAG_LABEL_COUNT][2];
@@ -1115,6 +1116,11 @@ static void *item_thread(void *arg) {
     const char *data = getenv("BT3_DATA");
     (void)arg;
     MenuLabels_MainItem(data != NULL ? data : "gamedata", sItemPic);
+    if(getenv("BT3_WARRIOR_MODELS") && !strcmp(getenv("BT3_WARRIOR_MODELS"),"1")) {
+        const char *name[]={"Z Warriors"};
+        MenuLabels_MainTexts(data?data:"gamedata",name,1,sWarriorPic);
+        for(int lit=0;lit<2;lit++)if(!sWarriorPic[0][lit])sWarriorPic[0][lit]=tag_label_fallback(name[0],lit);
+    }
     if(getenv("BT3_TAG_TEAM")) {
         static const char *base[]={"Team Battle","Free For All","Modded Training","Mod Settings","Back",
             "One Player","Two Players","Three Players","Four Players","Back"};
@@ -1193,6 +1199,15 @@ int Port_MainItemLabel(int entry, int lit, int out) {
     }
     memcpy(&clutAt, e + 0x3C, 4);
     MenuLabels_ItemPixels(pic, (const uint8_t *)Port_Ptr(clutAt) + 0x60, dst);
+    return 1;
+}
+int Port_MainWarriorLabel(int entry,int lit,int out) {
+    const uint8_t *e=(const uint8_t *)Port_Ptr((uint32_t)entry);uint32_t clutAt;
+    int waited=0;item_start();while(sItem!=2 && waited++<5000)usleep(1000);
+    __sync_synchronize();
+    if(sItem!=2 || (unsigned)lit>=2 || !sWarriorPic[0][lit])return 0;
+    memcpy(&clutAt,e+0x3C,4);
+    MenuLabels_ItemPixels(sWarriorPic[0][lit],(const uint8_t *)Port_Ptr(clutAt)+0x60,(uint8_t *)Port_Ptr((uint32_t)out));
     return 1;
 }
 int Port_MainTagLabel(int entry,int lit,int row,int out) {

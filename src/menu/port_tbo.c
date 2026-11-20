@@ -4,6 +4,7 @@
 #include "sys/save.h"
 
 #ifdef PORT
+#include "menu/warrior_native.h"
 /*
  * PC only: "Tenkaichi Budokai Online", the main menu's item 11 (menu_a.c). The port's screen mode (port_screen.c)
  * runs this screen. Its own look for online play, after the mockups of online_design: every picture, piece,
@@ -218,6 +219,14 @@ static const char *const sTbNames[] = {
     "Future Gohan",
     "Future Gohan Super Saiyan",
 };
+const char *PortTbo_WarriorDonor(s32 index) {
+    static char names[250][192];
+    s32 native;
+    if(index<0 || index>=250)return NULL;
+    native=PortZwNative_DonorName(index,(u32)names[index],sizeof(names[index]));
+    if(native>=0)return native?names[index]:NULL;
+    return index>=0 && index<(s32)(sizeof(sTbNames)/sizeof(sTbNames[0]))?sTbNames[index]:NULL;
+}
 #include "menu/tbo_art.h"
 #include "menu/tbo_sizes.h"
 #include "menu/port_screen.h"

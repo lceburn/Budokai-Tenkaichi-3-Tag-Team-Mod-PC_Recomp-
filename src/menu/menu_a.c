@@ -1,6 +1,7 @@
 #include "common.h"
 #include "menu/menu_a.h"
 #ifdef PORT
+#include "plat_game.h"
 #include "battle/tag_session.h"
 #include "battle/tag_challenge.h"
 #include "menu/tag_tournament.h"
@@ -51,15 +52,19 @@ void MainMenu_PlateGoto(s32 idx,char *label);
 #include "../../port/src/gs/tag_net.h"
 
 #define MAINMENU_TBO 11
+#define MAINMENU_WARRIORS 12
+static s32 warrior_menu_enabled(void) {
+    return PortGame_IsBT4() && PortGame_WarriorModelsEnabled();
+}
 static s32 tagPage, tagMode, presetPage, settingsPage;
 #define TAG_SETTINGS_ROWS (MAINMENU_ITEM_MAX-3)
 #define TAG_MENU_PRESET 100
 static s32 preset_count(void) {return tagMode==TAG_MODE_GAUNTLET?TagChallenge_Count():5;}
 static s32 preset_rows(void) {s32 n=preset_count()-presetPage*8;return n>8?8:n;}
-static s32 stockItems[MAINMENU_ITEM_MAX], stockCount, stockTop, stockCursor;
+static s32 stockItems[MAINMENU_ITEM_CAPACITY], stockCount, stockTop, stockCursor;
 /* The native plate movie uses a second texture sheet after row seven. Keep
    both sheets intact so long settings pages and returning to stock work. */
-static u8 stockLabels[2][MAINMENU_ITEM_MAX][512*32], tagLabels[2][MAINMENU_ITEM_MAX][512*32];
+static u8 stockLabels[2][MAINMENU_ITEM_CAPACITY][512*32], tagLabels[2][MAINMENU_ITEM_MAX][512*32];
 static s32 tagLabelsReady;
 static s32 TagMenu_OptionAt(s32 page,s32 row) {
     s32 i;
@@ -118,7 +123,7 @@ static void TagMenu_SettingChange(s32 row,s32 direction) {
 void TagMenu_Request(s32 page) { tagPage=page; }
 static s32 tag_icon(s32 item) {
     static const s32 icons[6]={3,3,6,9,4,4};
-    return tagPage>=4 ? 9 : tagPage==3 ? 3 : tagPage ? icons[item%6] : item==MAINMENU_TBO?4:item;
+    return tagPage>=4 ? 9 : tagPage==3 ? 3 : tagPage ? icons[item%6] : item==MAINMENU_TBO?4:item==MAINMENU_WARRIORS?6:item;
 }
 #define MM_ICON(item) tag_icon(item)
 
@@ -171,7 +176,7 @@ static void TagMenu_SetPage(s32 page) {
     if(!tagPage && page) { stockTop=gMainMenu->top; stockCursor=gMainMenu->cursor; }
     tagPage=page;
     if(page==3) TagSetup_Reset();
-    for(lit=0;lit<2;lit++) for(row=0;row<(page?count:MAINMENU_ITEM_MAX);row++) {
+    for(lit=0;lit<2;lit++) for(row=0;row<(page?count:PortGame_IsBT4()?MAINMENU_ITEM_CAPACITY:MAINMENU_ITEM_MAX);row++) {
         u8 *tex=gMainMenu->tex[lit?12:8]+(row/8)*0x40;
         u8 *px=*(u8 **)(tex+0x38)+0x60;
         u8 *labelPixels=page?tagLabels[lit][row]:stockLabels[lit][row];
@@ -201,7 +206,7 @@ static void TagMenu_Prepare(void) {
     if(!Port_TagAvailable()) { tagPage=0; return; }
     memcpy(stockItems,gMainMenu->items,sizeof(stockItems));
     stockCount=gMainMenu->itemCount; stockTop=gMainMenu->top; stockCursor=gMainMenu->cursor;
-    for(lit=0;lit<2;lit++) for(row=0;row<MAINMENU_ITEM_MAX;row++) {
+    for(lit=0;lit<2;lit++) for(row=0;row<(PortGame_IsBT4()?MAINMENU_ITEM_CAPACITY:MAINMENU_ITEM_MAX);row++) {
         u8 *tex=gMainMenu->tex[lit?12:8]+(row/8)*0x40;
         u8 *px=*(u8 **)(tex+0x38)+0x60;
         for(y=0;y<32;y++) for(x=0;x<512;x++)
@@ -415,6 +420,9 @@ void MainMenu_Init(s32 section) {
         if (i == (Port_NetMenuListed() ? 4 : 3) && !Port_TagAvailable()) {
             gMainMenu->items[gMainMenu->itemCount++] = MAINMENU_TBO;
         }
+        if (i == 5 && warrior_menu_enabled()) {
+            gMainMenu->items[gMainMenu->itemCount++] = MAINMENU_WARRIORS;
+        }
 #endif
     }
 #ifdef PORT
@@ -422,6 +430,17 @@ void MainMenu_Init(s32 section) {
     if (!PortMainMenu_WriteDisc(gMainMenu->tex[8] + 0x40, 3, 0) || !PortMainMenu_WriteDisc(gMainMenu->tex[12] + 0x40, 3, 1)) {
         PortMainMenu_WriteRuns(gMainMenu->tex[8] + 0x40, 3, sPortTboOff, sizeof(sPortTboOff) / sizeof(sPortTboOff[0]));
         PortMainMenu_WriteRuns(gMainMenu->tex[12] + 0x40, 3, sPortTboOn, sizeof(sPortTboOn) / sizeof(sPortTboOn[0]));
+    }
+    if(warrior_menu_enabled()) {
+        extern s32 Port_MainWarriorLabel(s32,s32,s32);
+        static u8 pixels[512*32];s32 lit,x,y;
+        /* BT4's owned sheets are 512x256; row 12 is within their second sheet. */
+        for(lit=0;lit<2;lit++) {
+            u8 *tex=gMainMenu->tex[lit?12:8]+0x40;
+            u8 *px=*(u8 **)(tex+0x38)+0x60;
+            if(Port_MainWarriorLabel((s32)tex,lit,(s32)pixels))
+                for(y=0;y<32;y++)for(x=0;x<512;x++)px[PortMainMenu_PixelAt(x,128+y)]=pixels[y*512+x];
+        }
     }
 #endif
     gMainMenu->top = gMainMenu->itemCount - 1;
@@ -888,6 +907,12 @@ void MainMenu_Input(s32 *result) {
             MAINMENU_CHOOSE(70);
             break;
 #ifdef PORT
+        case MAINMENU_WARRIORS:
+            if(!warrior_menu_enabled())break;
+            gPortScreen=PORT_SCREEN_WARRIORS;
+            MAINMENU_COUNT();
+            MAINMENU_CHOOSE(MPROG_MODE_PORT_SCREEN);
+            break;
         case MAINMENU_TBO: /* "Tenkaichi Budokai Online": the port's screen mode runs its screens (menu/port_tbo.c) */
             { extern s32 Port_TagAvailable(void);
               gPortScreen = Port_TagAvailable()?PORT_SCREEN_TAG_TEAM:PORT_SCREEN_TBO; }

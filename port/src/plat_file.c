@@ -35,6 +35,7 @@ extern size_t Port_FileReadAt(const char *rel, long offset, void *buf, size_t by
 static char sPartDir[8][64];
 static const char *partition_dir(int ptid) {
     static const char *bt4[] = {"pzs4us0", "pzs4us1", "pzs4us2", "pzs4us3"};
+    if (PortGame_IsBT4() && ptid==7) return "zwarriors";
     if (PortGame_IsBT4() && ptid >= 0 && ptid < 4) return bt4[ptid];
     return sPartDir[ptid & 7];
 }

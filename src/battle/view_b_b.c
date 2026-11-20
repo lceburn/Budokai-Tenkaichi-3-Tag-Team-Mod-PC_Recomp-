@@ -20,6 +20,13 @@ extern void *memset(void *dst, s32 c, u32 n);
 s32 ChrTbl_WrapCostume(s32 chara, s32 *costume) {
     ChrTblFile *file = CHRTBL_FILE;
     ChrTblEntry *table = (ChrTblEntry *)CHRTBL_SECTION(file, charaOffset);
+#ifdef PORT
+    if(PortGame_IsCustomCharacter(chara)) {
+        s32 n=PortGame_Costumes(chara);
+        if(costume && (*costume<0 || *costume>=n))*costume=0;
+        return n;
+    }
+#endif
 
     if (costume != NULL && !(*costume < table[chara].costumes)) {
         *costume = 0;
@@ -31,6 +38,9 @@ s32 ChrTbl_WrapCostume(s32 chara, s32 *costume) {
 s32 ChrTbl_GetCost(s32 chara) {
     ChrTblFile *file = CHRTBL_FILE;
     ChrTblEntry *table = (ChrTblEntry *)CHRTBL_SECTION(file, charaOffset);
+#ifdef PORT
+    chara=PortGame_TableCharacter(chara);
+#endif
 
     return table[chara].cost;
 }
@@ -48,6 +58,9 @@ s32 ChrTbl_GetLevel(s32 chara, s32 slot, s32 fromRec) {
     }
     file = CHRTBL_FILE;
     table = (ChrTblEntry *)CHRTBL_SECTION(file, charaOffset);
+#ifdef PORT
+    chara=PortGame_TableCharacter(chara);
+#endif
     return table[chara].baseLevel + level;
 }
 
@@ -55,6 +68,9 @@ s32 ChrTbl_GetLevel(s32 chara, s32 slot, s32 fromRec) {
 s32 ChrTbl_GetExp(s32 chara, s32 slot) {
     ChrTblFile *file = CHRTBL_FILE;
     ChrTblEntry *table = (ChrTblEntry *)CHRTBL_SECTION(file, charaOffset);
+#ifdef PORT
+    chara=PortGame_TableCharacter(chara);
+#endif
 
     return table[chara].exp[SAVE_CUSTOM_AT(gSaveData, slot).level];
 }
@@ -65,6 +81,9 @@ s32 ChrTbl_GetMaxExp(s32 chara) {
     ChrTblEntry *table = (ChrTblEntry *)CHRTBL_SECTION(file, charaOffset);
     s32 i;
     s32 max = 0;
+#ifdef PORT
+    chara=PortGame_TableCharacter(chara);
+#endif
 
     for (i = 0; i < CHRTBL_EXP_COUNT; i++) {
         if (table[chara].exp[i] != 0) {
@@ -165,6 +184,9 @@ void ItemSet_GetStats(u16 *ids, s32 *stats, s32 *ability, s32 chara) {
     s32 m;
     s32 id;
     s32 idx;
+#ifdef PORT
+    chara=PortGame_TableCharacter(chara);
+#endif
 
     memset(stats, 0, 0x14);
     memset(ability, 0, 0x10);
@@ -231,6 +253,9 @@ s32 ItemTbl_CanEquip(s32 item, s32 chara, ItemTblEntry *table) {
     u32 flags = table[item].flags;
     ChrTblFile *file;
     ChrTblEntry *charas;
+#ifdef PORT
+    chara=PortGame_TableCharacter(chara);
+#endif
 
     if (flags & (ITEMTBL_FLAG_NONE_A | ITEMTBL_FLAG_NONE_B)) {
         return 0;

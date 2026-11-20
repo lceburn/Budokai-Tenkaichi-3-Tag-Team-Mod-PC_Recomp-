@@ -12,6 +12,7 @@ import tempfile
 import threading
 
 import native_save
+import native_creator_install
 import native_tables
 from import_native_disc import extract
 
@@ -25,6 +26,9 @@ cd -- "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 for name in $(env | sed -n 's/^\\(BT3_[A-Za-z0-9_]*\\)=.*/\\1/p'); do unset "$name"; done
 export BT3_TAG_TEAM=1 BT3_GS=gpu BT3_UPDATE_CHECK=0 BT3_MENU_ITEM4=0
 export BT3_DATA="$PWD/gamedata" BT3_SAVES="$PWD/saves" BT3_SETTINGS="$PWD/settings.txt"
+if [ -f "$PWD/gamedata/warrior-sources/creator-cache.json" ]; then
+    export BT3_WARRIOR_MODELS=1 BT3_WARRIOR_NATIVE_HEAD_TEST=1 BT3_WARRIOR_NATIVE_HAND_TEST=1 BT3_WARRIOR_NATIVE_BODY_TEST=1
+fi
 exec "$PWD/engine/TagTeam" "$@"
 '''
 
@@ -75,6 +79,8 @@ def install(iso, target, language='en', save=None, payload=PAYLOAD, progress=pri
         extract(iso, stage / 'gamedata')
         for i, data in enumerate(tables):
             (stage / 'gamedata' / f'native-tables{i}.bin').write_bytes(data)
+        release = json.loads((payload / 'release.json').read_text(encoding='utf-8'))
+        native_creator_install.ensure(stage / 'gamedata', bool(release.get('creator')), progress)
         progress('Installing game / Instalando el juego...')
         for name in files:
             destination = stage / name

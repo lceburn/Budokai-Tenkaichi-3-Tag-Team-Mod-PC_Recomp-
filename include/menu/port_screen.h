@@ -13,6 +13,7 @@ enum {
     PORT_SCREEN_TAG_TEAM,
     PORT_SCREEN_TAG_ONLINE,
     PORT_SCREEN_TAG_LOBBY,
+    PORT_SCREEN_WARRIORS,
 };
 
 extern s32 gPortScreen; /* the screen the mode runs next (PORT_SCREEN_*) */

@@ -225,7 +225,8 @@ s32 BtlAct_CanTransform(BtlActJChr *chr, u32 index, s32 needBlast, s32 needAllow
     }
     if (needBlast &&
 #ifdef PORT
-        (PortGame_IsBT4() ? !BtlMember_HasKi(chr,cost) : !BtlMember_HasBlast(chr,cost))) {
+        ((PortGame_UsesBT4Rules(BtlMember_GetActive(chr)->chara) &&
+          !PortGame_IsCustomCharacter(BtlMember_GetActive(chr)->chara)) ? !BtlMember_HasKi(chr,cost) : !BtlMember_HasBlast(chr,cost))) {
 #else
         !BtlMember_HasBlast(chr,cost)) {
 #endif
@@ -294,7 +295,7 @@ s32 BtlAct_QueueTransform(BtlActJChr *chr, s32 index) {
         chr->form.unk28 = 2;
     }
 #ifdef PORT
-    if (PortGame_IsBT4()) {
+    if (PortGame_UsesBT4Rules(BtlMember_GetActive(chr)->chara)) {
         extern s32 BtlParam_GetTransformPropCostume(BtlActJChr *,s32);
         chr->form.unk28 = BtlParam_GetTransformPropCostume(chr,index);
         if (chr->form.unk24 >= 0x100) chr->form.unk24 += chr->form.unk28;

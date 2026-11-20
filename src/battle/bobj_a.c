@@ -107,13 +107,17 @@ static f32 retarget_height(BobjObj *obj) {
 #ifdef PORT
     /* B14 carries the skeleton scale in part 3 of each costume's model,
        rather than the shared character parameter block. */
-    if (PortGame_IsBT4()) {
+    if (PortGame_UsesBT4Rules(obj->chara)) {
         const u8 *rig = *(const u8 **)&obj->mdl;
         if (rig != NULL) return *(const f32 *)(rig + 0x74);
     }
 #endif
     return obj->mdl.param->height;
 }
+
+#ifdef PORT
+static s32 adjust_imported_motion(void *object,s32 motion,void *animation,s32 size);
+#endif
 
 /* Moves the translation keys of a motion from the skeleton it was made for to this object's skeleton: subtracts
    the source rest translation, scales y by the height ratio and adds this object's rest translation. The source
@@ -387,6 +391,8 @@ BobjAnim *BtlObjAnim_Load(BobjObj *obj, void *buf, s32 anim, s32 *size) {
         Bpe_Decode(obj->mdl.anims[anim], buf, size);
 #ifdef PORT
         if(PortGame_IsBT4() && PortGame_CheckAnimation(buf,*size)<0) return NULL;
+        if(PortGame_IsCustomCharacter(obj->chara) &&
+           adjust_imported_motion(obj,anim,buf,*size)<0) return NULL;
 #endif
         ret = buf;
     } else {
@@ -2375,7 +2381,8 @@ void BtlObj_BindTables(BObj *obj) {
     mdl->unk04 = BObjFile_GetEntry(&slot->file[0], 0xC);
     mdl->unk3C = BObjFile_GetEntry(&slot->file[0], 2);
 #ifdef PORT
-    if (PortGame_IsBT4() && mdl->unk3C) {
+    if (PortGame_IsBT4() && mdl->unk3C &&
+        !PortGame_UseEmbeddedModel(slot->file[0].buf,slot->file[0].size)) {
         u32 *parts=slot->file[0].buf;
         PortGame_RepairModelBody(mdl->unk3C,(parts[3]&~3u)-(parts[2]&~3u),slot->file[0].id);
     }
@@ -2425,7 +2432,8 @@ void BtlObj_BindTables(BObj *obj) {
     }
     mdl->unk38 = BObjFile_GetEntry(&slot->file[0], 1);
 #ifdef PORT
-    if (PortGame_IsBT4()) {
+    if (PortGame_IsBT4() &&
+        !PortGame_UseEmbeddedModel(slot->file[0].buf,slot->file[0].size)) {
         s32 chara = PortGame_ModelCharacter(slot->file[0].id);
         u32 *meta = PortGame_Metadata(chara, 0);
         u32 *lips = PortGame_Metadata(chara, (gSaveData->flags & 1) ? 3 : 2);
@@ -2440,6 +2448,12 @@ void BtlObj_BindTables(BObj *obj) {
         }
     }
 #endif
+    #ifdef PORT
+    /* BT4-derived generated models retain the disc's single-language script,
+       just as the separate metadata path does for ordinary BT4 fighters. */
+    if(PortGame_EmbeddedBT4(slot->file[0].buf,slot->file[0].size))
+        mdl->unkA4=BObjFile_GetEntry(&slot->file[0],0x2D);
+    #endif
     if (mdl->unk38 != NULL) {
         Res_RelocateOffsets(&mdl->unk38, mdl->unk38, mdl->unk38);
     }
@@ -2453,7 +2467,8 @@ void BtlObj_BindTables(BObj *obj) {
     mdl->unk91C = BObjFile_GetEntry(&slot->file[0], 0x1B);
     mdl->unk920 = BObjFile_GetEntry(&slot->file[0], 0x1C);
 #ifdef PORT
-    if (PortGame_IsBT4()) {
+    if (PortGame_IsBT4() &&
+        !PortGame_UseEmbeddedModel(slot->file[0].buf,slot->file[0].size)) {
         u32 *meta=PortGame_Metadata(PortGame_ModelCharacter(slot->file[0].id),0);
         if (meta) {
             u8 *params=(u8 *)meta+(meta[2]&~3u);
@@ -2471,6 +2486,14 @@ void BtlObj_BindTables(BObj *obj) {
 #endif
     mdl->chain = BObjFile_GetEntry(&slot->file[0], 0x17);
 }
+
+#ifdef PORT
+static s32 adjust_imported_motion(void *object,s32 motion,void *animation,s32 size) {
+    BObj *obj=object;
+    return PortGame_AdjustWarriorAnimation(obj->slot->file[0].buf,obj->slot->file[0].size,
+                                          motion,animation,size);
+}
+#endif
 
 /* Sets the object's initial flags from its type and model header, then the colour preset. */
 void BtlObj_InitFlags(BObj *obj) {
@@ -2500,6 +2523,22 @@ void BtlObj_InitFlags(BObj *obj) {
     }
 }
 
+#ifdef PORT
+/* Model binding initializes colours before assigning its new identity. Apply
+   saved custom light again once BtlObj_Setup has finished that assignment. */
+void BtlObj_ApplyWarriorAura(BObj *obj) {
+    if(((BobjObj *)obj)->type==0) {
+        s32 rgb=PortGame_WarriorAuraColour(((BobjObj *)obj)->chara);
+        if(rgb>0) {
+            f32 red=rgb&255,green=(rgb>>8)&255,blue=(rgb>>16)&255,peak=red;
+            if(green>peak)peak=green;if(blue>peak)peak=blue;if(peak<1.0f)peak=1.0f;
+            obj->state.preset[0]=63.0f+192.0f*red/peak;
+            obj->state.preset[1]=63.0f+192.0f*green/peak;
+            obj->state.preset[2]=63.0f+192.0f*blue/peak;
+        }
+    }
+}
+#endif
 /* Copies row `row` of preset table `set` (negative = the model's own, bit 24 of its flags) to the draw state. */
 void BtlObj_SetColorPreset(BObj *obj, s32 row, s32 set) {
     BObjState *state = &obj->state;
@@ -2547,6 +2586,9 @@ void BtlObj_SetColorPreset(BObj *obj, s32 row, s32 set) {
         state->preset[2] = table[set][row][2];
         state->preset[3] = table[set][row][3];
         state->preset[4] = table[set][row][4];
+#ifdef PORT
+        BtlObj_ApplyWarriorAura(obj);
+#endif
     }
 }
 

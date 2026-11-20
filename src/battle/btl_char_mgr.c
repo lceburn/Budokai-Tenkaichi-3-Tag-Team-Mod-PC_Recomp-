@@ -1336,6 +1336,9 @@ void BtlChar_AllocAll(s32 count) {
     gBtlChars->tbl[2] = FILE_TABLE(gCommonRes->data[0], 6);
     gBtlChars->tbl[3] = FILE_TABLE(gCommonRes->data[0], 7);
     gBtlChars->tbl[4] = FILE_TABLE(gCommonRes->data[0], 8);
+#ifdef PORT
+    gBtlChars->tbl[4] = PortGame_GaugeTable(gBtlChars->tbl[4]);
+#endif
     gBtlChars->tbl[5] = FILE_TABLE(gCommonRes->data[0], 9);
     BtlChar_ResetAll();
     BtlCharSnd_Init();

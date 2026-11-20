@@ -119,6 +119,13 @@ s32 Progress_Main(s32 arg) {
     }
 #ifdef PORT
     { extern void TagSession_Return(s32,s32); TagSession_Return(flags,reason); }
+    {
+        extern s32 gPortWarriorPlaytest;
+        if(gPortWarriorPlaytest && (flags&8)) {
+            gPortWarriorPlaytest=0;gPortScreen=PORT_SCREEN_WARRIORS;
+            gProgress->mode=MPROG_MODE_PORT_SCREEN;
+        }
+    }
 #endif
     if (gProgress->mode == 1 || gProgress->mode == 4) {
         if (gMenuArc1 == NULL) {

@@ -2,6 +2,17 @@
 #include "common.h"
 #include "battle/eft_q.h"
 #include "sys/gfx_ot.h"
+#ifdef PORT
+extern s32 BtlCharApi_GetChara(s32 objId);
+extern s32 PortGame_WarriorAuraColour(s32 chara);
+static void WarriorGlow_Tint(Vec4 *colour,f32 red,f32 green,f32 blue) {
+    f32 peak=colour->x;
+    if(colour->y>peak)peak=colour->y;if(colour->z>peak)peak=colour->z;
+    colour->x=(red+(1.0f-red)*.15f)*peak;
+    colour->y=(green+(1.0f-green)*.15f)*peak;
+    colour->z=(blue+(1.0f-blue)*.15f)*peak;
+}
+#endif
 
 /*
  * Effect tasks, 0x170A50..0x174A70. See include/battle/eft_q.h.
@@ -217,6 +228,19 @@ void EftGlow_SetType(EftGlow *w, s32 objId, s32 type, s32 paramFlags) {
             EftGlow_ColorFromBytes(&w->color[i], &gEftGlowCfg->color[w->type * EFT_GLOW_ROW + j + 1]);
         }
     }
+#ifdef PORT
+    {
+        s32 rgb=PortGame_WarriorAuraColour(BtlCharApi_GetChara(objId));
+        if(rgb>0) {
+            f32 red=rgb&255,green=(rgb>>8)&255,blue=(rgb>>16)&255,peak=red;
+            if(green>peak)peak=green;if(blue>peak)peak=blue;if(peak<1.0f)peak=1.0f;
+            red/=peak;green/=peak;blue/=peak;
+            WarriorGlow_Tint(&w->colorA,red,green,blue);
+            WarriorGlow_Tint(&w->colorB,red,green,blue);
+            for(i=0;i<4;i++)WarriorGlow_Tint(&w->color[i],red,green,blue);
+        }
+    }
+#endif
 }
 
 /* Reads the fighter's aura type, parameter flags and height into the glow. */

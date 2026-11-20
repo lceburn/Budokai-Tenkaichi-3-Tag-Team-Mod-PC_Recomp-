@@ -81,6 +81,11 @@ s32 ChrTbl_IsRelated(s32 a, s32 b) {
     ChrTblFile *file;
     ChrTblEntry *table;
     s32 i;
+#ifdef PORT
+    /* Until form groups are exposed in the menu, custom identities are only
+       related to themselves, never to their stat donor's ordinary forms. */
+    if(PortGame_IsCustomCharacter(a) || PortGame_IsCustomCharacter(b))return a==b;
+#endif
 
     if (a == CHRTBL_ID_4F || a == CHRTBL_ID_6D || a == CHRTBL_ID_80 || b == CHRTBL_ID_4F || b == CHRTBL_ID_6D ||
         b == CHRTBL_ID_80) {

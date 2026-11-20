@@ -1230,7 +1230,7 @@ s32 BtlSuper_GetThrowChara(BtlTechBChr *chr, s32 slot) {
        structure. +0x208 is now outfit selection, not character IDs. Reading
        it as BT3's IDs queues spurious Goku models and can block the victim's
        damage-model reload at the end of an ultimate. */
-    if (PortGame_IsBT4()) {
+    if (PortGame_UsesBT4Rules(obj->chara)) {
         s32 costume = BtlMember_GetActive(chr)->costume & 3;
         return ((s16 *)((u8 *)tbl + 0x244))[costume * 3 + i];
     }
@@ -1253,7 +1253,7 @@ s32 BtlSuper_GetThrowCostume(BtlTechBChr *chr, s32 slot) {
 
     slot -= 2;
 #ifdef PORT
-    if (PortGame_IsBT4()) {
+    if (PortGame_UsesBT4Rules(BtlChar_GetObj(chr)->chara)) {
         s32 costume = BtlMember_GetActive(chr)->costume;
         s32 partner = ((s16 *)((u8 *)tbl + 0x244))[(costume & 3) * 3 + slot];
         if (partner >= 0x100) return 0;

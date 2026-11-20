@@ -1,7 +1,15 @@
 #ifdef PORT
 #define GRID_REAL_CHAR(id) PortGame_IsCharacter(id)
+#define TEAMSEL_ART_CHARACTER(id) PortGame_TableCharacter(id)
+#define TEAMSEL_CHIP(id) TeamSel_Chip(id)
+#define TEAMSEL_PORTRAIT(id) PortGame_MenuPortrait(id)
+#define TEAMSEL_NAME_CHARACTER(id) (PortGame_IsCustomCharacter(id)?-1:(id))
 #else
 #define GRID_REAL_CHAR(id) ((id) < TS_RANDOM)
+#define TEAMSEL_ART_CHARACTER(id) (id)
+#define TEAMSEL_CHIP(id) ((MTexRes *)MPACK_AT(gTeamSel->chipPack,(id)+1))
+#define TEAMSEL_PORTRAIT(id) ((id)+TS_FACE_FILE)
+#define TEAMSEL_NAME_CHARACTER(id) (id)
 #endif
 #include "common.h"
 #include "menu/menu_e.h"
@@ -9,6 +17,7 @@
 #include "sys/pad.h"
 #include "sys/save.h"
 #ifdef PORT
+#include "plat_warriors.h"
 #include "battle/tag_session.h"
 #include "menu/tag_tournament.h"
 #include "battle/tag_challenge.h"
@@ -25,6 +34,9 @@ static s32 cpuPrompt=-1,cpuPromptLevel,cpuApproved=-1;
 /* Shared by offline and online character picking; cancelling or starting a
    new roster must not replace the last difficulty the player confirmed. */
 static s32 cpuLastConfirmed=-1;
+static MTexRes *warriorChips[PORT_WARRIOR_PLAYABLE_MAX];
+static MTexRes *TeamSel_Chip(s32 id);
+static void TeamSel_LoadWarriorChips(void);
 extern void Port_TagCpuPromptTrace(s32 event,s32 slot,s32 level);
 static void TeamSel_DrawCpuPrompt(void) {
     extern const char *CpuLevel_SettingName(s32);
@@ -212,6 +224,26 @@ void TeamSel_SetStageChips(void) {
     }
 }
 
+#ifdef PORT
+static MTexRes *TeamSel_Chip(s32 id) {
+    s32 index=id-PORT_WARRIOR_FIRST_CHARACTER;
+    if(index>=0 && index<PORT_WARRIOR_PLAYABLE_MAX && warriorChips[index])return warriorChips[index];
+    return (MTexRes *)MPACK_AT(gTeamSel->chipPack,TEAMSEL_ART_CHARACTER(id)+1);
+}
+static void TeamSel_LoadWarriorChips(void) {
+    s32 i,count=PortGame_CharacterCount()-PORT_WARRIOR_FIRST_CHARACTER;
+    memset(warriorChips,0,sizeof(warriorChips));
+    for(i=0;i<count && i<PORT_WARRIOR_PLAYABLE_MAX;i++) {
+        MTexRes *res; s32 file=PortGame_WarriorChip(PORT_WARRIOR_FIRST_CHARACTER+i);
+        if(file<0)continue;
+        /* File reads round up to 2048-byte sectors, including their padding. */
+        res=Heap_Alloc(6144,0x40,0,2);
+        File_LoadSync(file,res,5504);Res_RelocateOffsets(&res,res,res);
+        warriorChips[i]=res;
+    }
+}
+#endif
+
 /* The seven chips of a side's reel show the cursor's row of the character grid. */
 void TeamSel_SetChips(s32 side) {
     s32 slot[7] = { 8, 11, 12, 13, 14, 15, 16 };
@@ -223,7 +255,7 @@ void TeamSel_SetChips(s32 side) {
 
         gTeamSel->side[side]->chip[1][i] = gTeamSel->side[side]->chip[0][i];
         gTeamSel->side[side]->chip[0][i] = id;
-        res = (MTexRes *)MPACK_AT(gTeamSel->chipPack, id + 1);
+        res = TEAMSEL_CHIP(id);
         gTeamSel->sideTex[side][18 + i] = gTeamSel->sideTex[side][slot[i]];
         gTeamSel->sideTex[side][slot[i]] = res->tex;
     }
@@ -247,7 +279,7 @@ void TeamSel_SetGridFormChips(s32 side) {
         }
         gTeamSel->side[side]->chip[1][i] = gTeamSel->side[side]->chip[0][i];
         gTeamSel->side[side]->chip[0][i] = id;
-        res = (MTexRes *)MPACK_AT(gTeamSel->chipPack, id + 1);
+        res = TEAMSEL_CHIP(id);
         gTeamSel->sideTex[side][18 + i] = gTeamSel->sideTex[side][slot[i]];
         gTeamSel->sideTex[side][slot[i]] = res->tex;
     }
@@ -264,7 +296,7 @@ void TeamSel_SetCustomChips(s32 side) {
 
         gTeamSel->side[side]->chip[1][i] = gTeamSel->side[side]->chip[0][i];
         gTeamSel->side[side]->chip[0][i] = id;
-        res = (MTexRes *)MPACK_AT(gTeamSel->chipPack, id + 1);
+        res = TEAMSEL_CHIP(id);
         gTeamSel->sideTex[side][18 + i] = gTeamSel->sideTex[side][slot[i]];
         gTeamSel->sideTex[side][slot[i]] = res->tex;
     }
@@ -288,7 +320,7 @@ void TeamSel_SetFormChips(s32 side) {
         }
         gTeamSel->side[side]->chip[1][i] = gTeamSel->side[side]->chip[0][i];
         gTeamSel->side[side]->chip[0][i] = id;
-        res = (MTexRes *)MPACK_AT(gTeamSel->chipPack, id + 1);
+        res = TEAMSEL_CHIP(id);
         gTeamSel->sideTex[side][18 + i] = gTeamSel->sideTex[side][slot[i]];
         gTeamSel->sideTex[side][slot[i]] = res->tex;
     }
@@ -306,7 +338,7 @@ void TeamSel_SetTeamTex(s32 side) {
         gTeamSel->teamTex[side][slot[i]] = NULL;
         if (i < gTeamSel->side[side]->memberCount) {
             s32 id = gTeamSel->side[side]->member[i].chara;
-            MTexRes *res = (MTexRes *)MPACK_AT(gTeamSel->chipPack, id + 1);
+            MTexRes *res = TEAMSEL_CHIP(id);
 
             gTeamSel->teamTex[side][slot[i]] = res->tex;
             if (gTeamSel->battleType == 2) {
@@ -328,7 +360,7 @@ void TeamSel_UpdateFaceLoad(void) {
         for(i=0;i<2;i++)if(gTeamSel->side[i]->flags&TEAMSEL_SIDE_FACE_CHANGE) {
             s32 id=gTeamSel->side[i]->chara;
             if(id>=0) {
-                File_LoadSync(id+TS_FACE_FILE,gTeamSel->faceFile[i],0x16800);
+                File_LoadSync(TEAMSEL_PORTRAIT(id),gTeamSel->faceFile[i],0x16800);
                 Sprite_Unpack(gTeamSel->faceFile[i],gTeamSel->faceRes[i],NULL);
                 res=gTeamSel->faceRes[i];Res_RelocateOffsets(&res,res,res);
                 gTeamSel->tex[i?22:23]=MTEX(res,0);
@@ -366,7 +398,7 @@ void TeamSel_UpdateFaceLoad(void) {
                 gTeamSel->faceState = TEAMSEL_LOAD_IDLE;
             }
         } else {
-            File_Request(gTeamSel->side[gTeamSel->faceSide]->chara + TS_FACE_FILE,
+            File_Request(TEAMSEL_PORTRAIT(gTeamSel->side[gTeamSel->faceSide]->chara),
                          gTeamSel->faceFile[gTeamSel->faceSide], 0x16800);
             gTeamSel->faceState = TEAMSEL_LOAD_READ;
         }
@@ -806,6 +838,9 @@ void TeamSel_Init(s32 section) {
         }
     }
 #endif
+#ifdef PORT
+    TeamSel_LoadWarriorChips();
+#endif
     gTeamSel->cells[0] = (TsCell *)(MPACK_AT(gTeamSel->res, 42) + 0x10);
     gTeamSel->masterCount[0] = TS_PACK_WORD(gTeamSel->res, 42);
     gTeamSel->cells[1] = gTeamSel->cells[0];
@@ -815,6 +850,10 @@ void TeamSel_Init(s32 section) {
 
         ChrGrid_Build(&gTeamSel->cellCount[i], gTeamSel->grid[i], &gTeamSel->masterCount[i], gTeamSel->cells[i],
                       &gTeamSel->customCount[i], gTeamSel->custom[i]);
+#ifdef PORT
+        if(!Port_NetSession())
+            gTeamSel->cellCount[i]=PortGame_WarriorGrid(gTeamSel->grid[i],gTeamSel->cellCount[i],TS_CELL_MAX);
+#endif
         gTeamSel->masterCount[i] = gTeamSel->cellCount[i];
         gTeamSel->cells[i] = gTeamSel->grid[i];
         gTeamSel->rows[i] = gTeamSel->masterCount[i] / cols;
@@ -932,7 +971,7 @@ void TeamSel_Init(s32 section) {
     }
 #endif
     for (i = 0; i < TEAMSEL_SIDES; i++) {
-        File_LoadSync(gTeamSel->side[i]->chara + TS_FACE_FILE, gTeamSel->faceFile[i], 0x16800);
+        File_LoadSync(TEAMSEL_PORTRAIT(gTeamSel->side[i]->chara), gTeamSel->faceFile[i], 0x16800);
         Sprite_Unpack(gTeamSel->faceFile[i], gTeamSel->faceRes[i], NULL);
         res = gTeamSel->faceRes[i];
         Res_RelocateOffsets(&res, res, res);
@@ -987,6 +1026,11 @@ void TeamSel_Term(void) {
     for (i = 0; i < TEAMSEL_FLASH_NUM; i++) {
         Flash_Destroy(&gTeamSel->flash[i]);
     }
+#ifdef PORT
+    for(i=0;i<PORT_WARRIOR_PLAYABLE_MAX;i++)if(warriorChips[i]) {
+        Heap_Free(warriorChips[i]);warriorChips[i]=NULL;
+    }
+#endif
     if (gTeamSel->stageRes[1] != NULL) {
         Heap_Free(gTeamSel->stageRes[1]);
         gTeamSel->stageRes[1] = NULL;
@@ -1092,9 +1136,9 @@ void TeamSel_Draw(void) {
         Flash_ClipSetAlpha(flash, &ref, gTeamSel->faceAlpha[i]);
         Flash_ClipSetFlags(flash, &ref, 0x80, (u8)gTeamSel->faceMask);
         Flash_FindLabel(flash, NULL, i ? "mc_name_text_r" : "mc_name_text_l", &ref);
-        TextBox_AttachLine(flash, &ref, 0, 0, gTeamSel->side[i]->chara, &gTeamSel->nameBox[i]);
+        TextBox_AttachLine(flash, &ref, 0, 0, TEAMSEL_NAME_CHARACTER(gTeamSel->side[i]->chara), &gTeamSel->nameBox[i]);
         Flash_FindLabel(flash, NULL, i ? "mc_form_text_r" : "mc_form_text_l", &ref);
-        TextBox_AttachLine(flash, &ref, 0, 0, gTeamSel->side[i]->chara, &gTeamSel->formBox[i]);
+        TextBox_AttachLine(flash, &ref, 0, 0, TEAMSEL_NAME_CHARACTER(gTeamSel->side[i]->chara), &gTeamSel->formBox[i]);
     }
     uv.x0 = 0;
     uv.x1 = 0x200;
@@ -1488,6 +1532,27 @@ void TeamSel_Draw(void) {
         if(!practicePickHidden)Flash_Draw(&gTeamSel->flash[i]);
     }
 
+#endif
+#ifdef PORT
+    if(!practicePickHidden) {
+        extern void Font_PrintAsciiAt(s32,s32,char *);
+        extern void Flash_ClipGetPos(MFlash *,MFlashRef *,s32 *,s32 *);
+        extern f32 Flash_ClipGetAlpha(MFlash *,MFlashRef *);
+        extern FontStyle gFontStyle;
+        FontStyle saved=gFontStyle;
+        gFontStyle.align=FONT_ALIGN_CENTER;gFontStyle.scale=0.7f;
+        gFontStyle.color=0xFFFFFFFF;gFontStyle.shadowMode=FONT_SHADOW_DROP;
+        gFontStyle.shadowColor=0xC0000000;
+        for(i=0;i<TEAMSEL_SIDES;i++)if(PortGame_IsCustomCharacter(gTeamSel->side[i]->chara)) {
+            s32 x,y;
+            Flash_FindLabel(&gTeamSel->flash[0],NULL,i?"mc_name_text_r":"mc_name_text_l",&ref);
+            if(ref.id>=0 && Flash_ClipGetAlpha(&gTeamSel->flash[0],&ref)>0.1f) {
+                Flash_ClipGetPos(&gTeamSel->flash[0],&ref,&x,&y);
+                Font_PrintAsciiAt(x+108,y+4,(char *)PortGame_CharacterName(gTeamSel->side[i]->chara));
+            }
+        }
+        gFontStyle=saved;
+    }
 #endif
     if(!practicePickHidden) {
         Font_FlushAll(); IconWin_Draw(); ItemPanel_Draw(0); ItemPanel_Draw(1); ItemHelp_Draw(gTeamSel->help);

@@ -19,11 +19,46 @@ extern s32 BtlStage_FindZoneNear(s32,Vec4 *),BtlCharApi_HasCamPriority(s32),BtlC
 extern s32 BtlCharApi_IsInRushSequence(s32);
 extern s32 BtlCharApi_HasAuthoredCamera(s32);
 static void transition_test(s32 tick,s32 kind);
+/* Opt-in imported-form round trip, including the normal resource-change path. */
+static void warrior_transform_test(s32 tick) {
+    static s32 original,target,phase,settled,hp;
+    BtlMgrChr *a=BtlChar_Get(0);
+    BtlMgrGauge *g=BtlMember_GetActiveGauge(a);
+    s32 current=BtlMember_GetActive(a)->chara;
+    if(tick==30) {
+        original=current;target=PortGame_WarriorFormTarget(current,0);hp=g->health;
+        Port_TagTestCheck(PortGame_IsCustomCharacter(original) && target!=0xFF,2800);
+    }
+    if(tick==60) {
+        g->blast=0;
+        Port_TagTestCheck(!BtlAct_CanTransform((BtlActJChr *)a,0,1,1),2801);
+        g->blast=g->blastMax;
+        Port_TagTestCheck(BtlAct_CanTransform((BtlActJChr *)a,0,1,1),2802);
+        Port_TagTestCheck(BtlAct_QueueTransform((BtlActJChr *)a,0),2803);
+        BtlAct_Request(a,BtlAct_GetQueued(a));phase=1;
+    }
+    if(phase && current==(phase==1?target:original) && a->action==0xB &&
+       !BtlCharApi_IsChanging(a->objId) && !BtlCharApi_HasCamPriority(a->objId)) settled++;
+    else settled=0;
+    if(settled==30) {
+        Port_TagTestCheck(g->health==hp,2804);
+        Port_TagTestCheck(g->blast<g->blastMax,2805);
+        if(phase==2) {Port_TagTestCheck(1,99);return;}
+        Port_TagTestCheck(PortGame_WarriorFormTarget(current,0)==original,2806);
+        g->blast=g->blastMax;
+        Port_TagTestCheck(BtlAct_CanTransform((BtlActJChr *)a,0,1,1),2807);
+        Port_TagTestCheck(BtlAct_QueueTransform((BtlActJChr *)a,0),2808);
+        BtlAct_Request(a,BtlAct_GetQueued(a));phase=2;settled=0;
+    }
+    if(tick==1400)Port_TagTestCheck(0,2809);
+}
 void TagCinema_MatrixTick(s32 tick) {
     extern void TagSpecial_TestTick(s32);
     static s32 camera,paired,transformed,settled,hp,queued;
     s32 i,kind=Port_TagCinemaTest();
-    BtlMgrChr *a=BtlChar_Get(0),*b=BtlChar_Get(3),*t=BtlChar_Get(2);
+    BtlMgrChr *a,*b,*t;
+    if(kind==28){warrior_transform_test(tick);return;}
+    a=BtlChar_Get(0);b=BtlChar_Get(3);t=BtlChar_Get(2);
     if(kind==10||kind==11||kind==13) {transition_test(tick,kind);return;}
     if(kind==12)kind=2;
     if(kind>=4) {TagSpecial_TestTick(tick);return;}

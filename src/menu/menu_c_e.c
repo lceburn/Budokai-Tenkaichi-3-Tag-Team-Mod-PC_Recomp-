@@ -1,11 +1,18 @@
 #ifdef PORT
 #define GRID_REAL_CHAR(id) PortGame_IsCharacter(id)
+#define CHARSEL_CHIP(id) CharSel_Chip(id)
+#define CHARSEL_PORTRAIT(id) PortGame_MenuPortrait(id)
+#define CHARSEL_NAME(id) (PortGame_IsCustomCharacter(id)?-1:(id))
 #else
 #define GRID_REAL_CHAR(id) ((id) < MCHR_RANDOM)
+#define CHARSEL_CHIP(id) ((MTexRes *)MPACK_AT(gCharSel->chipPack,(id)+1))
+#define CHARSEL_PORTRAIT(id) ((id)+CHARSEL_FACE_FILE)
+#define CHARSEL_NAME(id) (id)
 #endif
 #include "common.h"
 #ifdef PORT
 #include "menu/tag_outfit.h"
+#include "plat_warriors.h"
 #endif
 #include "menu/menu_d.h"
 #include "sys/common.h"
@@ -53,6 +60,24 @@ extern void Port_MenuMovie(int index);
  */
 
 CharSel *gCharSel = NULL;
+#ifdef PORT
+static MTexRes *charSelWarriorChips[PORT_WARRIOR_PLAYABLE_MAX];
+static MTexRes *CharSel_Chip(s32 id) {
+    s32 index=id-PORT_WARRIOR_FIRST_CHARACTER;
+    if(index>=0 && index<PORT_WARRIOR_PLAYABLE_MAX && charSelWarriorChips[index])return charSelWarriorChips[index];
+    return (MTexRes *)MPACK_AT(gCharSel->chipPack,PortGame_TableCharacter(id)+1);
+}
+static void CharSel_LoadWarriorChips(void) {
+    s32 i;
+    memset(charSelWarriorChips,0,sizeof(charSelWarriorChips));
+    for(i=0;i<PORT_WARRIOR_PLAYABLE_MAX && PortGame_IsCustomCharacter(250+i);i++) {
+        s32 file=PortGame_WarriorChip(250+i);MTexRes *res;
+        if(file<0)continue;
+        res=Heap_Alloc(6144,0x40,0,2);File_LoadSync(file,res,5504);
+        Res_RelocateOffsets(&res,res,res);charSelWarriorChips[i]=res;
+    }
+}
+#endif
 
 extern void TextBox_Init(MTextBox *box, void *text, u32 preset);
 extern void TextBox_SetUnk80(MTextBox *box, s32 value);
@@ -141,7 +166,7 @@ void CharSel_SetRowChips(s32 side) {
 
         gCharSel->side[side]->prevChip[i] = gCharSel->side[side]->chip[i];
         gCharSel->side[side]->chip[i] = id;
-        res = (MTexRes *)MPACK_AT(gCharSel->chipPack, id + 1);
+        res = CHARSEL_CHIP(id);
         gCharSel->sideTex[side][18 + i] = gCharSel->sideTex[side][slot[i]];
         gCharSel->sideTex[side][slot[i]] = res->tex;
     }
@@ -163,7 +188,7 @@ void CharSel_SetCellFormChips(s32 side) {
         }
         gCharSel->side[side]->prevChip[i] = gCharSel->side[side]->chip[i];
         gCharSel->side[side]->chip[i] = id;
-        res = (MTexRes *)MPACK_AT(gCharSel->chipPack, id + 1);
+        res = CHARSEL_CHIP(id);
         gCharSel->sideTex[side][18 + i] = gCharSel->sideTex[side][slot[i]];
         gCharSel->sideTex[side][slot[i]] = res->tex;
     }
@@ -180,7 +205,7 @@ void CharSel_SetCustomChips(s32 side) {
 
         gCharSel->side[side]->prevChip[i] = gCharSel->side[side]->chip[i];
         gCharSel->side[side]->chip[i] = id;
-        res = (MTexRes *)MPACK_AT(gCharSel->chipPack, id + 1);
+        res = CHARSEL_CHIP(id);
         gCharSel->sideTex[side][18 + i] = gCharSel->sideTex[side][slot[i]];
         gCharSel->sideTex[side][slot[i]] = res->tex;
     }
@@ -202,7 +227,7 @@ void CharSel_SetFormChips(s32 side) {
         }
         gCharSel->side[side]->prevChip[i] = gCharSel->side[side]->chip[i];
         gCharSel->side[side]->chip[i] = id;
-        res = (MTexRes *)MPACK_AT(gCharSel->chipPack, id + 1);
+        res = CHARSEL_CHIP(id);
         gCharSel->sideTex[side][18 + i] = gCharSel->sideTex[side][slot[i]];
         gCharSel->sideTex[side][slot[i]] = res->tex;
     }
@@ -227,7 +252,7 @@ void CharSel_UpdateFaceLoad(void) {
         break;
     case CHARSEL_LOAD_REQUEST:
         File_CancelRequests();
-        File_Request(gCharSel->side[gCharSel->faceSide]->chara + CHARSEL_FACE_FILE,
+        File_Request(CHARSEL_PORTRAIT(gCharSel->side[gCharSel->faceSide]->chara),
                      gCharSel->faceFile[gCharSel->faceSide], 0x16800);
         gCharSel->faceState = CHARSEL_LOAD_READ;
         break;
@@ -681,6 +706,9 @@ void CharSel_Init(s32 section) {
     }
 #endif
 
+#ifdef PORT
+    CharSel_LoadWarriorChips();
+#endif
     gCharSel->cells[0] = (MChrCell *)(MPACK_AT(gCharSel->res, 42) + 0x10);
     gCharSel->masterCount[0] = MPACK_WORD(gCharSel->res, 42);
     gCharSel->cells[1] = gCharSel->cells[0];
@@ -688,6 +716,9 @@ void CharSel_Init(s32 section) {
     for (i = 0, cols = MCHR_COLS; i < CHARSEL_SIDES; i++) {
         ChrGrid_Build(&gCharSel->cellCount[i], gCharSel->grid[i], &gCharSel->masterCount[i], gCharSel->cells[i],
                       &gCharSel->customCount[i], gCharSel->custom[i]);
+#ifdef PORT
+        if(!Port_NetSession())gCharSel->cellCount[i]=PortGame_WarriorGrid(gCharSel->grid[i],gCharSel->cellCount[i],MCHR_CELL_MAX);
+#endif
         gCharSel->masterCount[i] = gCharSel->cellCount[i];
         gCharSel->cells[i] = gCharSel->grid[i];
         gCharSel->rows[i] = gCharSel->masterCount[i] / cols;
@@ -741,7 +772,7 @@ void CharSel_Init(s32 section) {
     gCharSel->stage->bgmPlaying = gCharSel->stage->bgm;
 
     for (i = 0; i < CHARSEL_SIDES; i++) {
-        File_LoadSync(gCharSel->side[i]->chara + CHARSEL_FACE_FILE, gCharSel->faceFile[i], 0x16800);
+        File_LoadSync(CHARSEL_PORTRAIT(gCharSel->side[i]->chara), gCharSel->faceFile[i], 0x16800);
         Sprite_Unpack(gCharSel->faceFile[i], gCharSel->faceRes[i], NULL);
         res = gCharSel->faceRes[i];
         Res_RelocateOffsets(&res, res, res);
@@ -780,6 +811,9 @@ void CharSel_Term(void) {
 #ifdef PORT
     gUiNameIdx = -1; /* drop the port's name overlays */
     gUiSongIdx = -1;
+    for(i=0;i<PORT_WARRIOR_PLAYABLE_MAX;i++)if(charSelWarriorChips[i]) {
+        Heap_Free(charSelWarriorChips[i]);charSelWarriorChips[i]=NULL;
+    }
 #endif
     IconWin_Term();
     ItemHelp_Term();
@@ -899,9 +933,9 @@ void CharSel_Draw(void) {
         Flash_ClipSetAlpha(f, &ref, gCharSel->faceAlpha[i]);
         Flash_ClipSetFlags(f, &ref, 0x80, (u8)gCharSel->faceMask);
         Flash_FindLabel(f, NULL, i ? "mc_name_text_r" : "mc_name_text_l", &ref);
-        TextBox_AttachLine(f, &ref, 0, 0, gCharSel->side[i]->chara, &gCharSel->nameBox[i]);
+        TextBox_AttachLine(f, &ref, 0, 0, CHARSEL_NAME(gCharSel->side[i]->chara), &gCharSel->nameBox[i]);
         Flash_FindLabel(f, NULL, i ? "mc_form_text_r" : "mc_form_text_l", &ref);
-        TextBox_AttachLine(f, &ref, 0, 0, gCharSel->side[i]->chara, &gCharSel->formBox[i]);
+        TextBox_AttachLine(f, &ref, 0, 0, CHARSEL_NAME(gCharSel->side[i]->chara), &gCharSel->formBox[i]);
     }
 
     uv.x0 = 0;
@@ -1229,6 +1263,27 @@ void CharSel_Draw(void) {
 #else
     for (i = 0; i < CHARSEL_FLASH_NUM; i++) {
         Flash_Draw(&gCharSel->flash[i]);
+    }
+#endif
+#ifdef PORT
+    {
+        extern void Font_PrintAsciiAt(s32,s32,char *);
+        extern void Flash_ClipGetPos(MFlash *,MFlashRef *,s32 *,s32 *);
+        extern f32 Flash_ClipGetAlpha(MFlash *,MFlashRef *);
+        extern FontStyle gFontStyle;
+        FontStyle saved=gFontStyle;
+        gFontStyle.align=FONT_ALIGN_CENTER;gFontStyle.scale=0.7f;
+        gFontStyle.color=0xFFFFFFFF;gFontStyle.shadowMode=FONT_SHADOW_DROP;
+        gFontStyle.shadowColor=0xC0000000;
+        for(i=0;i<CHARSEL_SIDES;i++)if(PortGame_IsCustomCharacter(gCharSel->side[i]->chara)) {
+            s32 x,y;
+            Flash_FindLabel(&gCharSel->flash[0],NULL,i?"mc_name_text_r":"mc_name_text_l",&ref);
+            if(ref.id>=0 && Flash_ClipGetAlpha(&gCharSel->flash[0],&ref)>0.1f) {
+                Flash_ClipGetPos(&gCharSel->flash[0],&ref,&x,&y);
+                Font_PrintAsciiAt(x+108,y+4,(char *)PortGame_CharacterName(gCharSel->side[i]->chara));
+            }
+        }
+        gFontStyle=saved;
     }
 #endif
     Font_FlushAll();
