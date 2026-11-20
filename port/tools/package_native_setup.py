@@ -19,6 +19,31 @@ import native_tables
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def creator_art(payload, licenses):
+    """Use credited project art and native shapes, not private reference art."""
+    from PIL import Image, ImageDraw
+    folder = payload / 'tbo/ui'
+    aliases = {'zw_bg': 'bg', 'zw_bar': 'kit_bar', 'zw_bar_sel': 'kit_sel',
+               'zw_dialog': 'kit_dialog', 'zw_kk_point': 'hosts_mic_wave',
+               'zw_pill': 'kit_gold', 'zw_pill_steel': 'kit_steel'}
+    for target, source in aliases.items():
+        shutil.copy2(folder / (source + '.png'), folder / (target + '.png'))
+    # Geometric preview stand and emblem, drawn from project-authored shapes.
+    stand = Image.new('RGBA', (400, 128), (0, 0, 0, 0)); draw = ImageDraw.Draw(stand)
+    draw.ellipse((12, 34, 388, 122), fill=(31, 18, 62, 180))
+    draw.ellipse((12, 12, 388, 100), fill=(66, 39, 100, 255), outline=(252, 199, 82, 255), width=6)
+    draw.ellipse((29, 22, 371, 87), outline=(255, 232, 167, 255), width=2)
+    stand.save(folder / 'zw_platform.png')
+    emblem = Image.new('RGBA', (128, 128), (0, 0, 0, 0)); draw = ImageDraw.Draw(emblem)
+    draw.ellipse((4, 4, 124, 124), fill=(63, 30, 102, 255), outline=(255, 202, 84, 255), width=7)
+    draw.polygon([(64, 20), (77, 51), (109, 64), (77, 77), (64, 109), (51, 77), (20, 64), (51, 51)], fill=(255, 224, 145, 255))
+    emblem.save(folder / 'zw_emblem.png')
+    (licenses / 'creator-ui.txt').write_text(
+        'Z Warriors release UI reuses the credited project artwork listed in tbo-ui-credits.txt.\n' +
+        ''.join(target + '.png -> ' + source + '.png\n' for target, source in aliases.items()) +
+        'The geometric preview stand and star emblem are project-authored. Private reference artwork is not bundled.\n', encoding='utf-8')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--platform', choices=('windows', 'linux'), default='windows' if sys.platform == 'win32' else 'linux')
@@ -100,6 +125,7 @@ def main():
     upstream.take_lang(payload)
     upstream.take_fonts(payload, licenses)
     upstream.take_tbo_art(payload, licenses)
+    creator_art(payload, licenses)
     upstream.take_example_mods(payload)
     if windows:
         # Installed checker runs from a temporary copy, before the engine starts.
