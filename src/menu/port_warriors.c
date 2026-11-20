@@ -27,8 +27,8 @@ static const char keys[]="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01
 
 static void zw_page(s32 next){if(page==ZW_NAME_PAD)PortTbo_TextMode(0);page=next;if(page==ZW_NAME_PAD)PortTbo_TextMode(1);}
 static void zw_info(char *message){Ps_Copy(notice,message,sizeof(notice));zw_page(ZW_NOTICE);}
-static s32 zw_count(void){s32 i,n=0;for(i=0;i<ZW_FIELD_COUNT;i++)if(zwFields[i].tab==tab)n++;return n+(tab==3 || tab==1);}
-static s32 zw_field(s32 at){s32 i;for(i=0;i<ZW_FIELD_COUNT;i++)if(zwFields[i].tab==tab && at--==0)return i;return -1;}
+static s32 zw_count(void){s32 i,n=0;for(i=0;i<ZW_FIELD_COUNT;i++)if(zwFields[i].tab==tab && zw_native_editable(i))n++;return n+(tab==3 || tab==1);}
+static s32 zw_field(s32 at){s32 i;for(i=0;i<ZW_FIELD_COUNT;i++)if(zwFields[i].tab==tab && zw_native_editable(i) && at--==0)return i;return -1;}
 static void zw_read(s32 id,char *out,s32 size){out[0]=0;PortZwNative_Read(id,(u32)out,size);}
 static void zw_name(s32 id,char *out,s32 size){out[0]=0;PortZwNative_List(id,(u32)out,size,0);}
 static void zw_end(void){leaving=1;ColorFade_StartOut(0,0,0,15);}
@@ -55,7 +55,6 @@ static void zw_choose(s32 id) {
         }
     }
     if(zwFields[id].kind==ZW_PART || zwFields[id].kind==ZW_ATTACK || zwFields[id].kind==ZW_LAYER)choices[choiceCount++]=-2;
-    if(id==ZW_HEADSET || id==ZW_BODYSET || (id>=ZW_HAIR && id<=ZW_ACCESSORIES))choices[choiceCount++]=-1;
     if(!strcmp(value,"none") && choiceCount>1 && choices[1]==-1)choice=1;
     separator=strstr(sourceValue,", costume ");
     if(separator){if(separator[10]>='1' && separator[10]<='4')parameter=separator[10]-'0';*separator=0;}
@@ -120,7 +119,7 @@ static void zw_update(void) {
     s32 i,side=Ps_Side();
     if(page==ZW_BUILD) {
         s32 result=PortZwNative_Poll();
-        if(result){libraryRow=warrior<PortZwNative_Count()?warrior+1:1;zw_status();}return;
+        if(result){if(result==1)previewState=0;libraryRow=warrior<PortZwNative_Count()?warrior+1:1;zw_status();}return;
     }
     if(page==ZW_LIBRARY) {
         Ps_Move(&libraryRow,PortZwNative_Count()+2);
@@ -141,8 +140,8 @@ static void zw_update(void) {
             if(PortZwNative_Dirty())zw_info("Save your changes before starting a playtest.");
             else {playtestRequest=250+warrior;zw_end();}
         }
-        else if(pressed&PADG_START){WarriorView_Clear();if(PortZwNative_Build())zw_page(ZW_BUILD);else zw_status();}
-        else if((pressed&PADG_CIRCLE) && zw_field(row)==ZW_HAIR) {
+        else if(pressed&PADG_START){if(PortZwNative_Build())zw_page(ZW_BUILD);else zw_status();}
+        else if((pressed&PADG_CIRCLE) && zw_field(row)==ZW_HAIR && zw_native_editable(ZW_EXTRA1)) {
             for(i=ZW_EXTRA1;i<=ZW_EXTRA4;i++){zw_read(i,value,sizeof(value));if(!value[0])break;}
             if(i>ZW_EXTRA4)zw_info("All four extra layers are in use. Edit an existing layer first.");
             else zw_choose(i);
@@ -154,7 +153,7 @@ static void zw_update(void) {
             if(side)layerPart=Ps_Wrap(layerPart+side,0,12);
             if(pressed&PADG_L1)parameter=Ps_Wrap(parameter-1,1,4);
             if(pressed&PADG_R1)parameter=Ps_Wrap(parameter+1,1,4);
-        }else if((zwFields[field].kind==ZW_ATTACK || (field!=ZW_VOICE && field!=ZW_STYLE && field!=ZW_MOVES)) && side)
+        }else if(zwFields[field].kind==ZW_ATTACK && side)
             parameter=Ps_Wrap(parameter+side,1,zwFields[field].kind==ZW_ATTACK?zw_attack_slots(field):4);
         if(pressed&PADG_TRIANGLE)zw_page(ZW_EDIT);
         else if(pressed&PADG_CROSS)zw_accept_donor();
@@ -208,7 +207,7 @@ static void zw_update(void) {
             PortZwNative_Write(field,(u32)value);zw_page(ZW_EDIT);
         }
     }else if(page==ZW_NOTICE) {
-        if(pressed&(PADG_CROSS|PADG_TRIANGLE)){zw_page(ZW_LIBRARY);if(libraryRow>PortZwNative_Count()+1)libraryRow=0;}
+        if(pressed&(PADG_CROSS|PADG_TRIANGLE)){zw_page(warrior>=0 && warrior<PortZwNative_Count()?ZW_EDIT:ZW_LIBRARY);if(libraryRow>PortZwNative_Count()+1)libraryRow=0;}
     }else if(page==ZW_DISCARD) {
         if(pressed&PADG_CROSS){PortZwNative_Open();zw_end();}
         else if(pressed&PADG_TRIANGLE)zw_page(ZW_LIBRARY);
@@ -237,6 +236,8 @@ static void zw_draw(void) {
         // the draft; only that assembled draft is then sent to the helper.
         previewStarted=1;previewState=PortZwNative_Preview(-1,0);
         if(previewState==1 || previewState==2)preview=250;
+    }else if(page==ZW_NOTICE && previewStarted) {
+        preview=previewState==1 || previewState==2?250:250+warrior;
     }else if(previewStarted) {
         PortZwNative_PreviewStop();previewStarted=0;previewState=0;
     }

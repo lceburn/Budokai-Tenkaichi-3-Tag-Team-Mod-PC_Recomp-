@@ -344,6 +344,10 @@ extern "C" int PortZwNative_Write(int field,uint32_t value) {
     auto e=selected();if(!e || library.process || field<0 || field>=ZW_FIELD_COUNT || !value)return 0;
     const auto text=static_cast<const char *>(Port_Ptr(value));size_t n=0;while(n<=512 && text[n])n++;
     if(n>512)return 0;std::string v(text,n);
+    const bool sourceChoice=zwFields[field].kind==ZW_PART || zwFields[field].kind==ZW_DONOR || zwFields[field].kind==ZW_ATTACK;
+    if(!v.empty() && (!zw_native_editable(field) || (sourceChoice && (v=="none" || v.find(", costume ")!=std::string::npos)))) {
+        library.status="This option is not supported by the native creator yet. Your draft was kept.";return 0;
+    }
     if((field==ZW_NAME || field==ZW_TITLE) && !value_ok(v))return 0;
     // Reference attack labels are optional overrides, stored in 32-byte slots.
     // Reject overlong edits instead of letting the builder truncate UTF-8.
@@ -395,6 +399,7 @@ static int save_native_stock() {
                                                    WarriorNativeForms::without_links(e.edited)))return 0;
     }
     if(!fresh || !WarriorNativeSources::generation_available(l.root))return 0;
+    if(!WarriorNativeBuild::ensure_library(l.root,l.status))return -1;
     if(l.entries.size()>4){l.status="The prototype supports four custom forms.";return -1;}
     for(const auto &e:l.entries)if(!e.fresh) {
         std::string current;
@@ -551,13 +556,37 @@ static int save_native_metadata() {
 extern "C" int PortZwNative_Build() {
     auto &l=library;if(l.process || !selected())return 0;
     if(previewJob.process){previewJob.saveRequested=true;return 1;}
+    struct RestoreRejectedPreview {
+        bool ready=previewJob.ready;
+        std::string applied=previewJob.applied,wanted=previewJob.wanted;
+        ~RestoreRejectedPreview() {
+            if(!ready || library.nativeResult || library.process)return;
+            for(const auto &cached:previewJob.cache)if(cached.first==applied && preview_apply(cached.second)) {
+                previewJob.ready=true;previewJob.applied=applied;previewJob.wanted=wanted;break;
+            }
+        }
+    } restoreRejectedPreview;
     PortZwNative_PreviewStop();
     int stock=save_native_stock();if(stock)return stock>0;
     int native=save_native_metadata();
     if(native)return native>0;
     int edits=save_native_stock_edits();if(edits)return edits>0;
     const char *python=std::getenv("BT3_WARRIOR_PYTHON"),*tool=std::getenv("BT3_WARRIOR_BUILD_TOOL"),*helper=std::getenv("BT3_WARRIOR_BUILDER_COPY");
-    if(!python || !tool || !helper){l.status="This edit still needs the reference builder. Native resource generation is unfinished.";return 0;}
+    if(!python || !tool || !helper) {
+        l.status="The native creator cannot save this draft. Your edits are still in the editor.";
+        if(!WarriorNativeSources::generation_available(l.root))l.status="Creator source data is missing. Restart through Play to prepare it. Your draft is still in the editor.";
+        else for(const auto &entry:l.entries) {
+            if(!entry.fresh && entry.edited.raw==entry.original.raw)continue;
+            for(int field=0;field<ZW_FIELD_COUNT;field++) {
+                if(field==ZW_HEADSET || field==ZW_BODYSET)continue;
+                const auto value=entry.edited.get(zwFields[field].key);
+                if(!value.empty() && (!zw_native_editable(field) || value=="none" || value.find(", costume ")!=std::string::npos)) {
+                    l.status=std::string("Native saving does not yet support: ")+zwFields[field].label+". Reset this setting to Default; your draft was kept.";break;
+                }
+            }
+        }
+        std::fprintf(stderr,"warrior native save rejected: %s\n",l.status.c_str());return 0;
+    }
     for(auto &e:l.entries)if(!e.fresh) {
         std::string current;
         if(!read(e.source/"warrior.txt",current) || current!=e.original.raw){l.status="A warrior changed on disk. Reopen the creator before saving.";return 0;}

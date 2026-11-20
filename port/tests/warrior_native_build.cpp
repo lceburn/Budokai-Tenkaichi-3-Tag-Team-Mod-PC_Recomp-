@@ -5,6 +5,17 @@ using namespace WarriorNativeBuild;
 static std::string contents(const fs::path &p){std::string s;assert(WarriorRecipe::read(p,s));return s;}
 int main(int argc,char **argv) {
     assert(argc==2);auto root=fs::absolute(fs::u8path(argv[1]));
+    auto clean=root/"clean-install";fs::create_directories(clean);
+    std::string libraryError;
+    assert(ensure_library(clean,libraryError));
+    assert(contents(clean/"mods/enabled.txt").empty());
+    assert(WarriorRecipe::write(clean/"mods/enabled.txt","Existing\n"));
+    assert(ensure_library(clean,libraryError));
+    assert(contents(clean/"mods/enabled.txt")=="Existing\n");
+    auto orphan=root/"orphan-library";fs::create_directories(orphan/"mods/Existing");
+    assert(!ensure_library(orphan,libraryError));
+    assert(!fs::exists(orphan/"mods/enabled.txt"));
+    assert(fs::is_directory(orphan/"mods/Existing"));
     fs::create_directories(root/"mods/A");fs::create_directories(root/"mods/B");
     auto a=root/"mods/A/warrior.txt",b=root/"mods/B/warrior.txt";
     const std::string original="name=One\nbody=Goku (End)\n";

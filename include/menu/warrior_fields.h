@@ -86,5 +86,16 @@ enum { ZW_FIELD_LIST(ZW_ENUM) ZW_FIELD_COUNT };
 typedef struct ZwField {int tab;const char *key,*label;int kind;} ZwField;
 #define ZW_ROW(id,tab,key,label,kind) {tab,key,label,kind},
 static const ZwField zwFields[ZW_FIELD_COUNT]={ZW_FIELD_LIST(ZW_ROW)};
+/* Expose only the controls implemented by the shipped native builder. */
+static int zw_native_editable(int field) {
+    if(field<0 || field>=ZW_FIELD_COUNT)return 0;
+    if(zwFields[field].kind==ZW_LAYER || zwFields[field].kind==ZW_NUMBER)return 0;
+    switch(field) {
+    case ZW_PORTRAIT:case ZW_LOOK2:case ZW_LOOK3:case ZW_LOOK4:
+    case ZW_BODYSET:case ZW_ACCESSORIES:case ZW_FINISHERS:case ZW_ANIM_MELEE:
+    case ZW_BLAST11COLOUR:case ZW_BLAST12COLOUR:return 0;
+    default:return 1;
+    }
+}
 #undef ZW_ROW
 #endif

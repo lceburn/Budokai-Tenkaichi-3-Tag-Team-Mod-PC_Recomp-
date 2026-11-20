@@ -4,6 +4,7 @@
 #include "warrior_native_forms.h"
 #include "warrior_native_pack.h"
 #include <functional>
+#include <cstdio>
 #include <set>
 
 namespace WarriorNativeBuild {
@@ -51,6 +52,40 @@ inline bool nonvisual_only(Document original,Document edited) {
     remove(original);remove(edited);return metadata_only(original,edited);
 }
 struct FileEdit {fs::path path;std::string original,edited;bool model=false,resource=false;};
+// A normal installation has no personal character folders until its first
+// save. Initialize only an empty library; never replace an existing index or
+// silently orphan character folders whose activation index is missing.
+inline bool ensure_library(const fs::path &root,std::string &error) {
+    std::error_code ec;auto base=fs::canonical(root,ec);
+    if(ec){error="The character data folder is unavailable.";return false;}
+    auto mods=base/"mods";
+    if(fs::is_symlink(mods,ec)){error="The character library cannot be a linked folder.";return false;}
+    ec.clear();fs::create_directory(mods,ec);
+    if(ec || fs::canonical(mods,ec)!=mods || ec) {
+        error="Could not open the local character library.";return false;
+    }
+    auto index=mods/"enabled.txt";
+    if(fs::is_symlink(index,ec)){error="The character index cannot be a linked file.";return false;}
+    ec.clear();
+    if(fs::exists(index,ec)) {
+        if(!ec && fs::is_regular_file(index,ec) && !ec)return true;
+        error="The character index is unavailable.";return false;
+    }
+    if(ec || !fs::is_empty(mods,ec) || ec) {
+        error="Character folders exist without enabled.txt. Keep them for library recovery.";return false;
+    }
+    // Exclusive creation avoids truncating an index written by another editor.
+#ifdef _WIN32
+    auto file=CreateFileW(index.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
+    if(file==INVALID_HANDLE_VALUE){error="Could not initialize the character index.";return false;}
+    if(!CloseHandle(file)){error="Could not finish the character index.";return false;}
+#else
+    std::FILE *file=std::fopen(index.c_str(),"wx");
+    if(!file){error="Could not initialize the character index.";return false;}
+    if(std::fclose(file)){error="Could not finish the character index.";return false;}
+#endif
+    error.clear();return true;
+}
 inline bool effect_name(const std::string &name) {
     const std::string suffix="_eff.pak";
     return name.size()>suffix.size() && name.find_first_of("/\\:")==std::string::npos &&
