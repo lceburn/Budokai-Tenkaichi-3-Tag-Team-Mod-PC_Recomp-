@@ -18,6 +18,8 @@ typedef struct {
     RngSite sites[ND_RNG_SITES];
     unsigned aiPresent[ND_AI_STAGES];
     uint32_t ai[ND_AI_STAGES][ND_ACTORS][ND_AI_WORDS];
+    unsigned check35Present;
+    uint32_t check35[ND_ACTORS][7];
 } Snapshot;
 PORT_HOST static Snapshot history[ND_HISTORY];
 PORT_HOST static Snapshot *current;
@@ -31,6 +33,11 @@ PORT_HOST static Snapshot initial;
 int ND_Phase(int phase){int old=rngPhase;rngPhase=phase;return old;}
 void ND_View(int view){rngView=view;}
 int ND_AiActive(void){return ND_Enabled()&&!captured&&current&&current->valid;}
+void ND_AiCheck35(int actor,const unsigned *data,unsigned count) {
+    if(!ND_AiActive()||actor<0||actor>=ND_ACTORS||!data||count!=7)return;
+    memcpy(current->check35[actor],data,sizeof(current->check35[actor]));
+    current->check35Present|=1u<<actor;
+}
 void ND_Ai(int actor,int stage,const unsigned *data,unsigned count) {
     rngActor=actor;
     if(!ND_Enabled()||captured||!current||!current->valid||actor<0||actor>=ND_ACTORS||
@@ -124,6 +131,7 @@ int ND_Dump(unsigned at,uint64_t local,uint64_t remote,uint64_t build,uint64_t d
     fprintf(f,"net-desync-v3 build=%016llx data=%016llx round=%u host=%d role=%d peer_role=%d mismatch_frame=%u current_frame=%u branches=%u local=%016llx remote=%016llx\n",(unsigned long long)build,(unsigned long long)data,roundNumber,host,role,peer,at,lastFrame,branches,(unsigned long long)local,(unsigned long long)remote);
     fprintf(f,"schema actor words: chara costume hp maxHp ki blast action target player lockedOff clash fused controller next seconds swap revive helper assist power team posX posY posZ posW rotX rotY rotZ rotW; floats are raw IEEE bits. header: actorCount sequenceState clock reserved teamCount winningTeam. Legacy four-word headers omit teamCount/winningTeam and legacy 28-word actors omit team. extra_rng: mtIndex sceneRand fighterRand vu0R. mt: 624 state words. rng: libc64 low/high. lobby: fingerprint low/high. States are at tick entry BEFORE that tick's inputs. Missing records and masks mean unavailable, not zero.\n");
     fprintf(f,"ai_schema stages=0:enter,1:sensed,2:thought,3:sent words=objId,target,type,level,managerFrame,dist,radiusSum,sight,seqFlags,depth,phase,step,timer,ruleSet,topId,statusLo,statusHi,react,oppClass,oppAction,seqHash,statusHash,moveHash,planHash,outHash,timer18,timer1C,timer20,buttons,stickX,stickY,ruleNo; hashes cover pointer-free AI blocks and floats are raw IEEE bits. AI observations occur AFTER tick entry, before/after each CPU pass.\n");
+    fprintf(f,"ai_check35_schema words=target,progressBits,kind,react,cooldownSet,result,reason; cooldownSet=80000000 means not read; reasons=0:accepted,1:kind-zero,2:reaction-blocked,3:no-progress,4:cooldown,5:progress-past-one. Values are the original reads, without re-evaluation.\n");
     if(context)context(f);
     fprintf(f,"rng_schema kinds=1:libc-next,2:libc-seed,3:vu0-float01,4:vu0-seed,5:mt-next,6:libc-wrapper,7:libc-range,8:vu0-range,9:mt-range phases=0:idle,1:net-tick,2:setup,3:audio,4:ai-input,5:fighters,6:effects-update,7:loaders,8:stage-update,9:camera,10:visibility,11:mechanics,12:view-prep,13:draw-world,14:draw-fighters,15:draw-effects,16:hud,17:overlay,18:frame-end. Events belong to the interval AFTER tick entry. Wrapper kinds describe callers and are not extra generator advances. Site overflow and overwritten events are explicit.\n");
     fprintf(f,"rng_storage event_capacity=%u site_capacity_per_tick=%u bytes=%llu\n",ND_RNG_EVENTS,ND_RNG_SITES,(unsigned long long)(sizeof(history)+sizeof(rngEvents)+sizeof(initial)+sizeof(seedEvents)));
@@ -143,6 +151,10 @@ int ND_Dump(unsigned at,uint64_t local,uint64_t remote,uint64_t build,uint64_t d
             for(j=0;j<ND_PAD_BYTES;j++)fprintf(f,"%02x",s->actual[p][j]);fputc('\n',f);
         }
         fprintf(f,"rng_counts frame=%u overflow=%u",t,s->siteOverflow);for(i=1;i<NR_KIND_COUNT;i++)fprintf(f," k%u=%u",i,s->rngCount[i]);fputc('\n',f);
+        for(i=0;i<ND_ACTORS;i++)if(s->check35Present&(1u<<i)) {
+            fprintf(f,"ai_check35 actor=%u",i);
+            for(j=0;j<7;j++)fprintf(f," %08x",s->check35[i][j]);fputc('\n',f);
+        }
         for(p=0;p<ND_AI_STAGES;p++)for(i=0;i<ND_ACTORS;i++)if(s->aiPresent[p]&(1u<<i)) {
             fprintf(f,"ai actor=%u stage=%u",i,p);
             for(j=0;j<ND_AI_WORDS;j++)fprintf(f," %08x",s->ai[p][i][j]);fputc('\n',f);

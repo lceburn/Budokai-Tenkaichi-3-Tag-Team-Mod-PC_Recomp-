@@ -1,6 +1,7 @@
 #include "common.h"
 #include "battle/cpu_level.h"
 #include "battle/btl_ai_act.h"
+#include "battle/net_rng_diag.h"
 #include "sys/rand.h"
 
 /*
@@ -1344,27 +1345,48 @@ s32 BtlAiSense_CheckBit29(AiActSide *s) {
 
 /* Situation bit 35: the opponent's technique has a non-zero kind byte, its progress is known and not above
    1, fighter +0x1070 is -30, react bit 0x400 clear. */
+#ifdef PORT
+/* Capture only the values the original short-circuit path actually reads.
+ * This observer neither retries a query nor changes the condition's result. */
+static s32 ai_check35_result(s32 actor,s32 target,f32 progress,s32 kind,u32 react,s32 cooldown,s32 result,s32 reason) {
+    if(ND_AiActive()) {
+        union {f32 f;u32 u;} bits;u32 words[7];bits.f=progress;
+        words[0]=target;words[1]=bits.u;words[2]=kind;words[3]=react;
+        words[4]=cooldown;words[5]=result;words[6]=reason;
+        ND_AiCheck35(actor,words,7);
+    }
+    return result;
+}
+#define AI_CHECK35_RETURN(value,why) return ai_check35_result(s->side,target,progress,kind,st->react,cooldown,value,why)
+#else
+#define AI_CHECK35_RETURN(value,why) return (value)
+#endif
 s32 BtlAiSense_CheckBit35(AiActSide *s) {
     AiActStatus *st = &s->st;
-    f32 progress = BtlCharApi_GetTechniqueProgress(TagTeam_Target(s->side));
+    s32 target = TagTeam_Target(s->side);
+    f32 progress = BtlCharApi_GetTechniqueProgress(target);
+    s32 kind = BtlCharApi_GetOppSkillKind(s->side);
+    s32 cooldown = (s32)0x80000000u;
 
-    if (!BtlCharApi_GetOppSkillKind(s->side)) {
-        return 0;
+    if (!kind) {
+        AI_CHECK35_RETURN(0,1);
     }
     if (st->react & 0x400) {
-        return 0;
+        AI_CHECK35_RETURN(0,2);
     }
     if (progress == -1.0f) {
-        return 0;
+        AI_CHECK35_RETURN(0,3);
     }
-    if (BtlCharApi_IsUnk1070Set(s->side)) {
-        return 0;
+    cooldown = BtlCharApi_IsUnk1070Set(s->side);
+    if (cooldown) {
+        AI_CHECK35_RETURN(0,4);
     }
     if (1.0f < progress) {
-        return 0;
+        AI_CHECK35_RETURN(0,5);
     }
-    return 1;
+    AI_CHECK35_RETURN(1,0);
 }
+#undef AI_CHECK35_RETURN
 
 /* Situation bit 31: by the opponent's technique progress: kind byte 0 with progress 0..1, or another kind
    with the opponent in state class 0x18 and progress 1..3; react bit 0x80 clear. */

@@ -37,6 +37,11 @@ def main():
         b['frames'][10]['rng_events'].append(dict(kind='9',phase='4',caller='20010005',before='1',after='2',result='61'))
         assert compare(a,b)['first_rng_event_difference'] is None
         assert compare(a,b)['first_ai_random_result_difference']['frame']==10
+        a['frames'][10]['ai_check35']={3:[2,0x3f800000,1,0,0,1,0]}
+        b['frames'][10]['ai_check35']={3:[2,0xbf800000,1,0,0x80000000,0,3]}
+        check=compare(a,b)['first_ai_check35_difference']
+        assert check['actor']==3 and check['differences'][0]['field']=='progressBits'
+        a['frames'][10]['ai_check35'].clear();b['frames'][10]['ai_check35'].clear()
         b['frames'][10]['rng_counts']['k1']='2'
         b['frames'][10]['rng_sites'][0]['count']='2'
         b['frames'][10]['rng_events'][0]['caller']='0000000020010010'

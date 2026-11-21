@@ -24,6 +24,10 @@ int main(void) {
     ND_Ai(-1,0,ai,ND_AI_WORDS);ND_Ai(ND_ACTORS,0,ai,ND_AI_WORDS);
     ND_Ai(3,ND_AI_STAGES,ai,ND_AI_WORDS);ND_Ai(3,0,ai,ND_AI_WORDS-1);
     assert(!current->aiPresent[0]);ND_Ai(-1,-1,NULL,0);
+    ND_AiCheck35(3,ai,7);ai[0]=0;
+    assert(current->check35Present==8&&current->check35[3][0]==3);
+    ND_AiCheck35(-1,ai,7);ND_AiCheck35(ND_ACTORS,ai,7);ND_AiCheck35(3,ai,6);
+    assert(current->check35Present==8);
     for(seed=0;seed<4;seed++) {
         Port_Srand(seed*1234567u);baselineSrand(seed*1234567u);
         for(i=0;i<1000;i++){assert(Port_Rand()==baselineRand());assert(gPortRandNext==baselineLibc);}
@@ -43,6 +47,7 @@ int main(void) {
     ND_Begin(100,1,3,99,98,1);assert(!history[101%512].valid&&!current->firstEvent);
     ND_Phase(NP_CAMERA);ND_View(3);
     ND_Ai(3,0,ai,ND_AI_WORDS);
+    ND_AiCheck35(3,ai,7);
     for(i=0;i<ND_RNG_EVENTS+100;i++)ND_Rng(NR_LIBC_NEXT,i,i+1,0x20001000+(i%(ND_RNG_SITES+16)),i);
     assert(current->rngCount[NR_LIBC_NEXT]==ND_RNG_EVENTS+100 && current->siteOverflow);
     assert(current->sites[0].actor==3 && rngEvents[(rngSequence-1)%ND_RNG_EVENTS].actor==3);

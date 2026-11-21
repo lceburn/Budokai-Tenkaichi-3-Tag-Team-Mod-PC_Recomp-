@@ -13,6 +13,7 @@ void ND_View(int);
 /* Bounded, host-only AI observation: stages enter, sensed, thought, sent. */
 void ND_Ai(int actor,int stage,const unsigned *words,unsigned count);
 int ND_AiActive(void);
+void ND_AiCheck35(int actor,const unsigned *words,unsigned count);
 #ifdef PORT
 #define NR_PHASE(p) ((void)ND_Phase(p))
 #define NR_VIEW(v) ND_View(v)

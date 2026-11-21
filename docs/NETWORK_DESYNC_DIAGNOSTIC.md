@@ -56,6 +56,14 @@ The code reads state without invoking RNG generators, writing simulation structu
 
 ### AI decision observations (Beta 20 experimental)
 
+Beta 21 additionally records `ai_check35` for the attack-readiness condition
+identified by the paired Beta 20 capture. It records the original target,
+technique-progress float bits, skill kind, reaction bits, cooldown test,
+result and return reason. A cooldown value of `80000000` means the original
+short-circuit path never read it. The observer does not retry queries or turn
+a not-read value into zero. These values distinguish which sensing input
+differs; this release does not claim a gameplay repair.
+
 The bounded capture can now retain four observations per active CPU fighter:
 entry after sight calculation, after sensing, after rule evaluation, and after
 sending its input. These are `ai actor=... stage=...` records, accompanied by an

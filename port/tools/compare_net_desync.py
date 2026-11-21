@@ -10,6 +10,7 @@ import zipfile
 FIELDS=('chara costume hp maxHp ki blast action target player lockedOff clash fused controller next seconds swap revive helper assist power posX posY posZ posW rotX rotY rotZ rotW').split()
 TEAM_FIELDS=FIELDS[:20]+['team']+FIELDS[20:]
 AI_FIELDS=('objId target type level managerFrame dist radiusSum sight seqFlags depth phase step timer ruleSet topId statusLo statusHi react oppClass oppAction seqHash statusHash moveHash planHash outHash timer18 timer1C timer20 buttons stickX stickY ruleNo').split()
+AI_CHECK35_FIELDS=('target progressBits kind react cooldownSet result reason').split()
 
 
 def pairs(line):
@@ -28,7 +29,7 @@ def read(path):
         elif line.startswith(('config ','roster=','options')):result['config'].append(line)
         elif line.startswith('frame='):
             if 'unavailable' in line:frame=None;continue
-            frame={'meta':pairs(line),'actors':{},'inputs':{},'rng_sites':[],'rng_events':[],'ai':{}}
+            frame={'meta':pairs(line),'actors':{},'inputs':{},'rng_sites':[],'rng_events':[],'ai':{},'ai_check35':{}}
             result['frames'][int(frame['meta']['frame'])]=frame
         elif frame is not None:
             if line.startswith('actor='):
@@ -41,6 +42,11 @@ def read(path):
             elif line.startswith('ai actor='):
                 parts=line.split();key=pairs(line)
                 frame['ai'][int(key['actor']),int(key['stage'])]=[int(w,16) for w in parts[3:]]
+            elif line.startswith('ai_check35 actor='):
+                parts=line.split();key=pairs(line)
+                values=[int(w,16) for w in parts[2:]]
+                if len(values)!=7:raise ValueError('Incomplete attack-readiness observation')
+                frame['ai_check35'][int(key['actor'])]=values
             else:
                 parts=line.split()
                 if parts and parts[0] in ('header','rng','lobby','mt','extra_rng'):frame[parts[0]]=[int(w,16) for w in parts[1:]]
@@ -70,7 +76,7 @@ def compare(a,b,symbols=None):
             'first_rng_count_difference':None,'first_rng_caller_difference':None,'first_rng_event_difference':None,
             'first_ai_random_result_difference':None,
             'ai_capture_available':any(f.get('ai') for f in a['frames'].values()) and any(f.get('ai') for f in b['frames'].values()),
-            'first_ai_difference':None}
+            'first_ai_difference':None,'first_ai_check35_difference':None}
     if not result['metadata_match']:
         result.update(common_frames=0,note='Captures differ in build, data, round or mismatch frame. Pair reports from the same event before comparing states.')
         return result
@@ -83,6 +89,14 @@ def compare(a,b,symbols=None):
     for tick in common:
         x,y=a['frames'][tick],b['frames'][tick]
         if tick<complete:
+            if result['first_ai_check35_difference'] is None:
+                for actor in sorted(x.get('ai_check35',{}).keys()|y.get('ai_check35',{}).keys()):
+                    left=x.get('ai_check35',{}).get(actor);right=y.get('ai_check35',{}).get(actor)
+                    if left is None or right is None:
+                        result['first_ai_check35_difference']={'frame':tick,'actor':actor,'component':'missing-check'};break
+                    delta=[{'field':AI_CHECK35_FIELDS[i],'first_bits':u,'second_bits':v} for i,(u,v) in enumerate(zip(left,right)) if u!=v]
+                    if delta:
+                        result['first_ai_check35_difference']={'frame':tick,'actor':actor,'differences':delta};break
             if result['first_ai_random_result_difference'] is None and not any(int(z.get('rng_coverage',{}).get('overwritten','0')) for z in (x,y)):
                 # Equal generator advances do not imply equal AI decisions:
                 # Rand_Range can apply different bounds to the same raw draw.
