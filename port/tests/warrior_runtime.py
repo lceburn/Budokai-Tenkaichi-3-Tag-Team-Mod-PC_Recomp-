@@ -51,6 +51,8 @@ def run(args, character, costume=0, damaged=False):
                BT3_LOAD_TRACE="1", SDL_AUDIO_DRIVER="dummy")
     if character >= 250:
         env["BT3_WARRIOR_MODELS"] = "1"
+    if args.session_list:
+        env["BT3_WARRIOR_SESSION_TEST"]=args.session_list
     if args.human:
         env["BT3_TAG_PLAY"] = str(args.players)
     if args.trace_nodes:
@@ -83,18 +85,22 @@ def run(args, character, costume=0, damaged=False):
         entry["minimum_hp"] = min(entry["minimum_hp"], row[5])
     completed = f"bt3: test frames complete: {args.frames}" in text or "bt3: battle finished" in text
     forms_seen=sorted({row[2] for row in trace if row[1]==0})
+    forms_loaded=sorted({int(value) for value in re.findall(r'model load: actor=0 kind=-?\d+ character=(\d+) ',text)})
     if args.transform_roundtrip:
         completed="tagteam fixture: PASS check=99" in text and "tagteam fixture: FAIL" not in text
     requested = f"model load: actor=0 kind=-1 character={character} costume={costume} variant={int(damaged)}" in text
     passed = code == 0 and completed and requested and actors.get(0, {}).get("character") == character
     if args.transform_roundtrip:
-        passed=passed and 250 in forms_seen and 251 in forms_seen
+        # A fast form change can fall entirely between 150-frame trace samples.
+        # Require its resource load AND the fixture's settled-state round trip.
+        passed=passed and 'tagteam fixture: PASS check=2806' in text and all(
+            form in forms_loaded for form in (args.expected_form or [250,251]))
     if args.script_mods:
         passed = passed and all(f"bt3: mod {name}: loaded:" in text for name in
                                ("modern_camera","modern_hud","modern_look","skill_list"))
         passed = passed and not re.search(r"bt3: mod .*: (?:error|stopped)",text,re.I)
     result = dict(case=name, passed=passed, exit=code, reached_fight=bool(trace), completed=completed,
-                  requested_model=requested, forms_seen=forms_seen, actors={str(key): value | {"actions": sorted(value["actions"])}
+                  requested_model=requested, forms_seen=forms_seen,forms_loaded=forms_loaded,actors={str(key): value | {"actions": sorted(value["actions"])}
                                                      for key, value in actors.items()})
     (out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
     print(("PASS " if passed else "FAIL ") + name, flush=True)
@@ -119,15 +125,30 @@ def main():
     parser.add_argument("--trace-nodes", action="store_true")
     parser.add_argument("--script-mods", action="store_true",help="Exercise bundled camera, HUD, look and skill-list mods together")
     parser.add_argument("--transform-roundtrip",action="store_true",help="Validate form change and return with normal battle handlers")
+    parser.add_argument("--session-list",help="Private relative .warrior-sessions fixture list for room-ID runtime checks")
+    parser.add_argument("--expected-form",type=int,action="append",help="Required transformation IDs; defaults to 250 and 251")
     args = parser.parse_args()
     if args.frames < 1 or args.timeout < 1:
         parser.error("Frames and timeout must be positive")
+    if args.session_list:
+        relative=Path(args.session_list)
+        if relative.is_absolute() or not relative.parts or relative.parts[0]!='.warrior-sessions' or '..' in relative.parts:
+            parser.error("Session fixture list must remain inside .warrior-sessions")
     args.output.mkdir(parents=True, exist_ok=True)
     record = dict(executable=hashlib.sha256(args.exe.read_bytes()).hexdigest(),
                   frames=args.frames, renderer=args.renderer,
                   transform_roundtrip=args.transform_roundtrip,
                   disc=json.loads((args.data / "native-disc.json").read_text()),
                   warrior_inputs=warrior_inputs(args.data))
+    if args.session_list:
+        listing=args.data/args.session_list
+        record['session_fixture']={'list':args.session_list,'sha256':hashlib.sha256(listing.read_bytes()).hexdigest(),'roots':[]}
+        for relative in listing.read_text().splitlines():
+            folder=args.data/relative
+            if not folder.resolve().is_relative_to((args.data/'.warrior-sessions').resolve()):
+                parser.error("Session fixture folder escapes the session storage")
+            record['session_fixture']['roots'].append({'root':relative,'files':{
+                p.relative_to(folder).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(folder.rglob('*')) if p.is_file()}})
     if args.script_mods:
         record["script_mods"]={p.relative_to(ROOT / "port/examples/mods").as_posix():
                                hashlib.sha256(p.read_bytes()).hexdigest()
@@ -141,6 +162,7 @@ def main():
                 (args.output / "results.json").write_text(json.dumps(results, indent=2) + "\n")
                 if not results[-1]["passed"]:
                     raise SystemExit(1)
+    assert record['warrior_inputs']==warrior_inputs(args.data), 'The local character library changed during the fight'
 
 
 if __name__ == "__main__":

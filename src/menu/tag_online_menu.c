@@ -7,6 +7,7 @@
 typedef struct LoadSprite {s32 flags,x0,y0,x1,y1,u0,v0,u1,v1,tex,r,g,b,a;} LoadSprite;
 #include "sys/pad.h"
 #include "../../port/src/gs/tag_net.h"
+#include "../../port/include/plat_warriors.h"
 
 /* Native online pages. Resources, input, sounds and transitions use the game
    loop; the network owns only the shared room configuration. No battle is
@@ -632,10 +633,16 @@ s32 TagOnlineMenu_Frame(void) {
         accepted=TeamSel_PickOnline(&member,c.owner[id]<0,&level,c.revision);
         TagNet_Status(&after);
         if(accepted && after.phase==2 && after.config.revision==c.revision) {
-            c.chara[id]=member.chara;c.costume[id]=member.color;
-            if(c.owner[id]<0)c.cpuLevel[id]=level;
-            for(k=0;k<8;k++)c.items[id][k]=member.items.id[k];
-            TagNet_Edit(&c);
+            if(member.chara>=PORT_WARRIOR_FIRST_CHARACTER && member.chara<PORT_WARRIOR_FIRST_CHARACTER+PORT_WARRIOR_PLAYABLE_MAX) {
+                TlLoadout loadout;loadout.chara=member.chara;loadout.costume=member.color;
+                for(k=0;k<8;k++)loadout.items[k]=member.items.id[k];
+                TagNet_ChooseCustom(member.chara-PORT_WARRIOR_FIRST_CHARACTER,id,(unsigned)c.revision,&loadout,level);
+            }else {
+                c.chara[id]=member.chara;c.costume[id]=member.color;
+                if(c.owner[id]<0)c.cpuLevel[id]=level;
+                for(k=0;k<8;k++)c.items[id][k]=member.items.id[k];
+                TagNet_Edit(&c);
+            }
         }
         TagOnlineMenu_Open();TagNet_Status(&room);previousPhase=room.phase;
         if(room.phase==2){select_room();focus=oldFocus;}

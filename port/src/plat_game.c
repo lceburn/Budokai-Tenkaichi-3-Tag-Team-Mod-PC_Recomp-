@@ -99,21 +99,40 @@ int PortGame_VolumeCount(int volume) {
     if(volume<0 || volume>=(bt4?4:3))return 0;
     return bt4?bt4Counts[volume]-(spanish && volume==2):bt3Counts[volume];
 }
+static int localPicker;
+void PortGame_LocalPicker(int enabled) {localPicker=enabled!=0;}
+int PortGame_LocalPickerActive(void) {return localPicker;}
 static int warrior_count(void) {
     int n;
-    if(!PortGame_IsBT4() || !PortGame_WarriorModelsEnabled() || onlineCustom)return 0;
+    if(!PortGame_IsBT4() || !PortGame_WarriorModelsEnabled() || (onlineCustom && !PortWarriors_SessionActive() && !localPicker))return 0;
     n=PortWarriors_Count();
     if(PortWarriors_Error())fail(PortWarriors_Error());
-    if(n>PORT_WARRIOR_PLAYABLE_MAX)fail("This import prototype supports at most four playable custom forms.");
+    if(n>(PortWarriors_SessionActive()?PORT_WARRIOR_SESSION_MAX:PORT_WARRIOR_PLAYABLE_MAX))fail("Custom form capacity exceeded.");
     return n;
 }
-int PortGame_IsCustomCharacter(int c) {
-    return c>=PORT_WARRIOR_FIRST_CHARACTER && c<PORT_WARRIOR_FIRST_CHARACTER+warrior_count();
+int PortGame_WarriorCharacter(int index) {
+    /* Registration may initialize a private session on the first lookup. */
+    (void)warrior_count();
+    if(index>=PORT_WARRIOR_LOCAL_KEY && index<PORT_WARRIOR_LOCAL_KEY+PORT_WARRIOR_PLAYABLE_MAX)
+        return PORT_WARRIOR_FIRST_CHARACTER+index-PORT_WARRIOR_LOCAL_KEY;
+    return index<0?-1:(PortWarriors_SessionActive()?PORT_WARRIOR_SESSION_FIRST:PORT_WARRIOR_FIRST_CHARACTER)+index;
 }
-int PortGame_CharacterCount(void) { return PortGame_IsBT4() ? 250+warrior_count() : 161; }
+int PortGame_WarriorIndex(int c) {
+    int count=warrior_count();
+    if(localPicker && c>=PORT_WARRIOR_FIRST_CHARACTER &&
+       c<PORT_WARRIOR_FIRST_CHARACTER+PortWarriors_LocalCount())
+        return PORT_WARRIOR_LOCAL_KEY+c-PORT_WARRIOR_FIRST_CHARACTER;
+    int index=c-(PortWarriors_SessionActive()?PORT_WARRIOR_SESSION_FIRST:PORT_WARRIOR_FIRST_CHARACTER);
+    return index>=0 && index<count?index:-1;
+}
+int PortGame_IsCustomCharacter(int c) {return PortGame_WarriorIndex(c)>=0;}
+int PortGame_CharacterCount(void) {
+    int n=warrior_count();
+    return PortGame_IsBT4()?(n?PortGame_WarriorCharacter(n):250):161;
+}
 static int warrior_named_donor(int c,int voice) {
     const char *name;int i;
-    name=voice?PortWarriors_VoiceName(c-250):PortWarriors_TemplateName(c-250);
+    name=voice?PortWarriors_VoiceName(PortGame_WarriorIndex(c)):PortWarriors_TemplateName(PortGame_WarriorIndex(c));
     if(name)for(i=0;i<250;i++)if(names[i][0] && !strcmp(name,names[i]))return i;
     fail("A custom warrior's named donor is absent from this disc roster.");return -1;
 }
@@ -121,20 +140,22 @@ int PortGame_TableCharacter(int c) {
     return PortGame_IsCustomCharacter(c)?warrior_named_donor(c,0):c;
 }
 int PortGame_UsesBT4Rules(int c) {
-    return PortGame_IsBT4() && (!PortGame_IsCustomCharacter(c) || PortWarriors_UsesBT4Rules(c-250));
+    return PortGame_IsBT4() && (!PortGame_IsCustomCharacter(c) || PortWarriors_UsesBT4Rules(PortGame_WarriorIndex(c)));
 }
 void *PortGame_GaugeTable(void *original) {
     static unsigned char *table;
     int n=warrior_count(),i;
     if(!n)return original;
-    if(!table)table=Port_LowAlloc((250+PORT_WARRIOR_PLAYABLE_MAX)*16);
+    if(!table)table=Port_LowAlloc((PORT_WARRIOR_SESSION_FIRST+PORT_WARRIOR_SESSION_MAX)*16);
     if(!table)fail("Could not allocate custom warrior gauge table.");
     memcpy(table,original,250*16);
-    for(i=0;i<n;i++)memcpy(table+(250+i)*16,(unsigned char *)original+PortGame_TableCharacter(250+i)*16,16);
+    for(i=0;i<n;i++)memcpy(table+PortGame_WarriorCharacter(i)*16,(unsigned char *)original+PortGame_TableCharacter(PortGame_WarriorCharacter(i))*16,16);
+    if(localPicker)for(i=0;i<PortWarriors_LocalCount();i++)
+        memcpy(table+(PORT_WARRIOR_FIRST_CHARACTER+i)*16,(unsigned char *)original+PortGame_TableCharacter(PORT_WARRIOR_FIRST_CHARACTER+i)*16,16);
     return table;
 }
 static int warrior_file(int c,int role) {
-    return PORT_WARRIOR_FILE_BASE+(c-250)*PORT_WARRIOR_FILE_STRIDE+role;
+    return PORT_WARRIOR_FILE_BASE+(PortGame_WarriorIndex(c))*PORT_WARRIOR_FILE_STRIDE+role;
 }
 int PortGame_CheckPortraitHeader(const void *header,int headerSize,int fileSize) {
     const unsigned char *p=header;
@@ -144,7 +165,7 @@ int PortGame_CheckPortraitHeader(const void *header,int headerSize,int fileSize)
 int PortGame_WarriorPortraitValid(int c) {
     unsigned char header[8];char relative[64],path[1600];FILE *f;long size;int valid;
     if(!PortGame_IsCustomCharacter(c))return 0;
-    snprintf(relative,sizeof(relative),"zwarriors/%d/%d.bin",c-250,PORT_WARRIOR_PORTRAIT);
+    snprintf(relative,sizeof(relative),"zwarriors/%d/%d.bin",PortGame_WarriorIndex(c),PORT_WARRIOR_PORTRAIT);
     if(PortWarriors_Alias(relative,path,sizeof(path))!=1 || !(f=fopen(path,"rb")))return 0;
     fseek(f,0,SEEK_END);size=ftell(f);rewind(f);
     valid=fread(header,1,8,f)==8 && size<=0x16800 &&
@@ -174,22 +195,24 @@ int PortGame_CheckWarriorChip(const void *data,int size) {
 int PortGame_WarriorChip(int c) {
     unsigned char data[5505];char relative[64],path[1600];FILE *f;size_t size;
     if(!PortGame_IsCustomCharacter(c))return -1;
-    snprintf(relative,sizeof(relative),"zwarriors/%d/%d.bin",c-250,PORT_WARRIOR_CHIP);
+    snprintf(relative,sizeof(relative),"zwarriors/%d/%d.bin",PortGame_WarriorIndex(c),PORT_WARRIOR_CHIP);
     if(PortWarriors_Alias(relative,path,sizeof(path))!=1 || !(f=fopen(path,"rb")))return -1;
     size=fread(data,1,sizeof(data),f);fclose(f);
     return PortGame_CheckWarriorChip(data,(int)size)?warrior_file(c,PORT_WARRIOR_CHIP):-1;
 }
 int PortGame_WarriorGrid(void *cells,int count,int capacity) {
-    int (*grid)[9]=cells,groups[PORT_WARRIOR_PLAYABLE_MAX],n=warrior_count();
+    int (*grid)[9]=cells,groups[PORT_WARRIOR_SESSION_MAX],n=warrior_count();
     int i,j,k,end=count,added=0,padded,changed;
-    if(!n || !grid || count<0 || count>capacity)return count;
+    int first=localPicker?PORT_WARRIOR_FIRST_CHARACTER:PortGame_WarriorCharacter(0);
+    if(localPicker)n=PortWarriors_LocalCount();
+    if(n<1 || n>PORT_WARRIOR_SESSION_MAX || !grid || count<0 || count>capacity)return count;
     for(i=0;i<n;i++)groups[i]=i;
     /* Treat supported links as undirected for selection grouping. The battle
        still exposes only the explicitly declared, directed transformations. */
     do {
         changed=0;
         for(i=0;i<n;i++)for(j=0;j<4;j++) {
-            int target=PortGame_WarriorFormTarget(250+i,j)-250,low,high;
+            int target=PortGame_WarriorFormTarget(first+i,j)-first,low,high;
             if(target<0 || target>=n || groups[target]==groups[i])continue;
             low=groups[i]<groups[target]?groups[i]:groups[target];
             high=groups[i]>groups[target]?groups[i]:groups[target];
@@ -197,13 +220,17 @@ int PortGame_WarriorGrid(void *cells,int count,int capacity) {
             changed=1;
         }
     }while(changed);
-    for(i=0;i<n;i++)if(groups[i]==i)added++;
+    for(i=0;i<n;i++)if(groups[i]==i) {
+        int forms=0;for(j=0;j<n;j++)if(groups[j]==i)forms++;
+        if(forms>7)return count; /* The native grid cell has seven form entries. */
+        added++;
+    }
     while(end>0 && grid[end-1][0]==164)end--; /* native filler marker */
     padded=(end+added+6)/7*7;
     if(padded>capacity)return count; /* No partial writes on a full roster. */
     for(i=0;i<n;i++)if(groups[i]==i) {
-        int forms=0;memset(grid[end],0,sizeof(grid[end]));grid[end][0]=250+i;
-        for(j=0;j<n;j++)if(groups[j]==i)grid[end][2+forms++]=250+j;
+        int forms=0;memset(grid[end],0,sizeof(grid[end]));grid[end][0]=first+i;
+        for(j=0;j<n;j++)if(groups[j]==i)grid[end][2+forms++]=first+j;
         grid[end][1]=forms>1?forms:0;end++;
     }
     while(end<padded){memset(grid[end],0,sizeof(grid[end]));grid[end++][0]=164;}
@@ -213,20 +240,22 @@ int PortGame_IsCharacter(int c) {
     if(PortGame_IsCustomCharacter(c))return 1;
     return PortGame_IsBT4() ? c>=0 && c<250 && (c<161 || c>164) && costumes[c]!=0 : c>=0 && c<161;
 }
-/* Network loadouts are limited to disc fighters even outside a scoped menu. */
+/* Local custom IDs are never accepted from the wire. Only validated session
+   registrations may become network fighters. */
 int PortGame_IsOnlineCharacter(int c) {
+    if(c>=PORT_WARRIOR_SESSION_FIRST && PortWarriors_SessionActive() && PortGame_IsCustomCharacter(c))return 1;
     return c>=0 && c<(PortGame_IsBT4()?250:161) && PortGame_IsCharacter(c);
 }
 int PortGame_StageCount(void) { return PortGame_IsBT4()?99:36; }
 const char *PortGame_CharacterName(int c) {
-    if(PortGame_IsCustomCharacter(c))return PortWarriors_Name(c-250);
+    if(PortGame_IsCustomCharacter(c))return PortWarriors_Name(PortGame_WarriorIndex(c));
     return PortGame_IsBT4() && c>=0 && c<250 && names[c][0]?names[c]:NULL;
 }
 const char *PortGame_WarriorAttackName(int c,int slot) {
-    return PortGame_IsCustomCharacter(c)?PortWarriors_AttackName(c-250,slot):NULL;
+    return PortGame_IsCustomCharacter(c)?PortWarriors_AttackName(PortGame_WarriorIndex(c),slot):NULL;
 }
 int PortGame_WarriorAuraColour(int c) {
-    return PortGame_IsCustomCharacter(c)?PortWarriors_AuraColour(c-250):-1;
+    return PortGame_IsCustomCharacter(c)?PortWarriors_AuraColour(PortGame_WarriorIndex(c)):-1;
 }
 static int musicIds[256],musicCount=-1;
 int PortGame_MusicCount(void) {
@@ -255,7 +284,7 @@ int PortGame_StreamFile(int id) {
     return id;
 }
 int PortGame_Costumes(int c) {
-    if(PortGame_IsCustomCharacter(c))return PortWarriors_Costumes(c-250);
+    if(PortGame_IsCustomCharacter(c))return PortWarriors_Costumes(PortGame_WarriorIndex(c));
     if(PortGame_IsBT4())return c>=0 && c<250 ? costumes[c] : 0;
     if(c>=0 && c<161) {
         static int loaded;
@@ -276,7 +305,7 @@ int PortGame_Costumes(int c) {
 }
 int PortGame_Model(int c, int outfit, int damaged) {
     if(PortGame_IsCustomCharacter(c)) {
-        if(outfit<0 || outfit>=PortWarriors_Costumes(c-250))fail("Invalid custom warrior costume.");
+        if(outfit<0 || outfit>=PortWarriors_Costumes(PortGame_WarriorIndex(c)))fail("Invalid custom warrior costume.");
         return warrior_file(c,PortWarriors_ModelRole(outfit,damaged));
     }
     if (!PortGame_IsBT4()) return 1424+c*10+outfit+(damaged?4:0);
@@ -304,8 +333,11 @@ static int damaged_available(int c,int outfit) {
 }
 int PortGame_ModelCharacter(int id) {
     int i;
+    if(localPicker && id>=PORT_WARRIOR_FILE_BASE+PORT_WARRIOR_LOCAL_KEY*PORT_WARRIOR_FILE_STRIDE &&
+       id<PORT_WARRIOR_FILE_BASE+(PORT_WARRIOR_LOCAL_KEY+PortWarriors_LocalCount())*PORT_WARRIOR_FILE_STRIDE)
+        return PORT_WARRIOR_FIRST_CHARACTER+(id-PORT_WARRIOR_FILE_BASE)/PORT_WARRIOR_FILE_STRIDE-PORT_WARRIOR_LOCAL_KEY;
     if(id>=PORT_WARRIOR_FILE_BASE && id<PORT_WARRIOR_FILE_BASE+warrior_count()*PORT_WARRIOR_FILE_STRIDE)
-        return 250+(id-PORT_WARRIOR_FILE_BASE)/PORT_WARRIOR_FILE_STRIDE;
+        return PortGame_WarriorCharacter((id-PORT_WARRIOR_FILE_BASE)/PORT_WARRIOR_FILE_STRIDE);
     if (!PortGame_IsBT4()) return (id-1424)/10;
     for (i=0; i<250; ++i) if (id>=models[i] && id<models[i+1]) return i;
     return -1;
@@ -380,26 +412,27 @@ int PortGame_FileIndex(int id) {
    the first metadata section. Keep them alive across model changes and menus. */
 int PortGame_WarriorModelsEnabled(void) {
     const char *enabled = getenv("BT3_WARRIOR_MODELS");
-    return enabled && !strcmp(enabled,"1");
+    return PortWarriors_SessionActive() || (enabled && !strcmp(enabled,"1"));
 }
 int PortGame_ModelCapacity(void) {
     return PortGame_WarriorModelsEnabled()?PORT_WARRIOR_MODEL_CAPACITY:0xE6800;
 }
 int PortGame_WarriorFormTarget(int chara,int slot) {
-    int index=chara-PORT_WARRIOR_FIRST_CHARACTER,target;
+    int index=PortGame_WarriorIndex(chara),target,character;
     if(!PortGame_IsCustomCharacter(chara) || slot<0 || slot>=4)return 0xFF;
     target=PortWarriors_FormTarget(index,slot);
+    character=index>=PORT_WARRIOR_LOCAL_KEY?PORT_WARRIOR_FIRST_CHARACTER+target:PortGame_WarriorCharacter(target);
     /* First supported manifest family: cost, standard sequence, basic change,
        no prop override, preserve damage. Other families remain unavailable. */
-    if(target<0 || target==index || !PortGame_IsCustomCharacter(250+target) ||
+    if(target<0 || (index>=PORT_WARRIOR_LOCAL_KEY?target==index-PORT_WARRIOR_LOCAL_KEY:target==index) || !PortGame_IsCustomCharacter(character) ||
        PortWarriors_FormField(index,slot,0)<0 || PortWarriors_FormField(index,slot,0)>5 ||
        PortWarriors_FormField(index,slot,1)!=0 || PortWarriors_FormField(index,slot,2)!=2 ||
        PortWarriors_FormField(index,slot,3)!=-1 || PortWarriors_FormField(index,slot,4)!=0)return 0xFF;
-    return 250+target;
+    return character;
 }
 int PortGame_WarriorFormField(int chara,int slot,int field) {
     if(PortGame_WarriorFormTarget(chara,slot)==0xFF || field<0 || field>=5)return -1;
-    return PortWarriors_FormField(chara-250,slot,field);
+    return PortWarriors_FormField(PortGame_WarriorIndex(chara),slot,field);
 }
 int PortGame_UseEmbeddedModel(const void *data, int size) {
     const unsigned char *p = data;
@@ -463,8 +496,18 @@ static void custom_path(char *path,size_t capacity,const char *suffix) {
     snprintf(path,capacity,"%s/native-bt4-custom%s",root?root:"saves",suffix);
 }
 void *PortGame_CustomSlot(void *original,int slot) {
-    static unsigned char warriorCustom[PORT_WARRIOR_PLAYABLE_MAX][56];
-    if(PortGame_IsCustomCharacter(slot))return warriorCustom[slot-250];
+    static unsigned char localCustom[PORT_WARRIOR_PLAYABLE_MAX][56],roomCustom[PORT_WARRIOR_SESSION_MAX][56];
+    static unsigned roomEpoch;
+    if(PortGame_IsCustomCharacter(slot)) {
+        int index=PortGame_WarriorIndex(slot);
+        if(index>=PORT_WARRIOR_LOCAL_KEY)return localCustom[index-PORT_WARRIOR_LOCAL_KEY];
+        if(PortWarriors_SessionActive()) {
+            unsigned epoch=PortWarriors_SessionEpoch();
+            if(epoch!=roomEpoch){memset(roomCustom,0,sizeof(roomCustom));roomEpoch=epoch;}
+            return roomCustom[index];
+        }
+        return localCustom[index];
+    }
     if(slot<0 || slot>=(PortGame_IsBT4()?250:97)) fail("Invalid equipment slot.");
     if(slot<97) return (unsigned char *)original+slot*56;
     if(!customLoaded) {

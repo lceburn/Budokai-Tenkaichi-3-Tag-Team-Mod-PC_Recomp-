@@ -11,6 +11,7 @@ s32 PortZwNative_Write(s32 field,u32 value);
 s32 PortZwNative_Status(u32 out,s32 capacity);
 s32 PortZwNative_Dirty(void);
 s32 PortZwNative_New(s32 copyForm);
+s32 PortZwNative_Duplicate(s32 source);
 s32 PortZwNative_DonorAllowed(s32 field,u32 name);
 s32 PortZwNative_DonorName(s32 index,u32 out,s32 capacity);
 s32 PortZwNative_AttackName(u32 donor,s32 slot,u32 out,s32 capacity);

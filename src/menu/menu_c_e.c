@@ -61,17 +61,17 @@ extern void Port_MenuMovie(int index);
 
 CharSel *gCharSel = NULL;
 #ifdef PORT
-static MTexRes *charSelWarriorChips[PORT_WARRIOR_PLAYABLE_MAX];
+static MTexRes *charSelWarriorChips[PORT_WARRIOR_SESSION_MAX];
 static MTexRes *CharSel_Chip(s32 id) {
-    s32 index=id-PORT_WARRIOR_FIRST_CHARACTER;
-    if(index>=0 && index<PORT_WARRIOR_PLAYABLE_MAX && charSelWarriorChips[index])return charSelWarriorChips[index];
+    s32 index=PortGame_WarriorIndex(id);
+    if(index>=0 && index<PORT_WARRIOR_SESSION_MAX && charSelWarriorChips[index])return charSelWarriorChips[index];
     return (MTexRes *)MPACK_AT(gCharSel->chipPack,PortGame_TableCharacter(id)+1);
 }
 static void CharSel_LoadWarriorChips(void) {
     s32 i;
     memset(charSelWarriorChips,0,sizeof(charSelWarriorChips));
-    for(i=0;i<PORT_WARRIOR_PLAYABLE_MAX && PortGame_IsCustomCharacter(250+i);i++) {
-        s32 file=PortGame_WarriorChip(250+i);MTexRes *res;
+    for(i=0;i<PORT_WARRIOR_SESSION_MAX && PortGame_IsCustomCharacter(PortGame_WarriorCharacter(i));i++) {
+        s32 file=PortGame_WarriorChip(PortGame_WarriorCharacter(i));MTexRes *res;
         if(file<0)continue;
         res=Heap_Alloc(6144,0x40,0,2);File_LoadSync(file,res,5504);
         Res_RelocateOffsets(&res,res,res);charSelWarriorChips[i]=res;
@@ -811,7 +811,7 @@ void CharSel_Term(void) {
 #ifdef PORT
     gUiNameIdx = -1; /* drop the port's name overlays */
     gUiSongIdx = -1;
-    for(i=0;i<PORT_WARRIOR_PLAYABLE_MAX;i++)if(charSelWarriorChips[i]) {
+    for(i=0;i<PORT_WARRIOR_SESSION_MAX;i++)if(charSelWarriorChips[i]) {
         Heap_Free(charSelWarriorChips[i]);charSelWarriorChips[i]=NULL;
     }
 #endif

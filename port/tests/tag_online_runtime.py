@@ -1,14 +1,19 @@
 """Native rooms using actual player and spectator processes; no external server."""
-import os, pathlib, subprocess, time, argparse, re, signal, sys
+import os, pathlib, subprocess, time, argparse, re, signal, sys, hashlib
 p=argparse.ArgumentParser()
 p.add_argument('--bt4', action='store_true')
 p.add_argument('--creator', action='store_true', help='Keep native creator enabled while testing disc-only online fighters')
 p.add_argument('--exe',type=pathlib.Path,help='Native executable to exercise')
 p.add_argument('--data',type=pathlib.Path,help='Imported disc folder (including regional profiles)')
+p.add_argument('--client-data',action='append',default=[],metavar='CLIENT=PATH',help='Separate imported data and saved library for this client')
+p.add_argument('--custom',action='append',default=[],metavar='CLIENT:INDEX',help='Private live custom-sharing probe for this saved local fighter')
+p.add_argument('--custom-transform',action='store_true',help='With case 6: transform the shared host fighter and return through its linked form')
+p.add_argument('--custom-exit-after',type=int,help='Leave the room normally after this many matches; require temporary-room cleanup')
 p.add_argument('--party', action='store_true', help='Persistent practice lobby transport')
 p.add_argument('--late-join', action='store_true', help='Wait for the first practice frame 1200 before the third connection')
 p.add_argument('--rejoin', action='store_true', help='Replace the first guest after their practice fighter change')
 p.add_argument('--join-in-match', action='store_true', help='Connect the third member during a match, then check the practice return')
+p.add_argument('--join-after-round',action='store_true',help='Connect the third member to running practice after the custom match has finished')
 p.add_argument('--party-mode',type=int,default=1,choices=range(5))
 p.add_argument('--spectators', type=int, default=0)
 p.add_argument('--players', type=int, default=2, choices=range(1,11))
@@ -33,6 +38,7 @@ p.add_argument('--gpu-client', help='Render only this client (for example player
 p.add_argument('--capture-ms', type=int, default=0, help='Save each GPU window at this time after startup')
 p.add_argument('--sound', action='store_true', help='Exercise the real audio backend')
 p.add_argument('--disconnect', choices=['host','guest','watch0'])
+p.add_argument('--disconnect-after-custom',action='store_true',help='Wait until custom packages are registered and the lobby match has started before disconnecting')
 p.add_argument('--kick', action='store_true', help='Host removes the first practice guest; other members continue')
 p.add_argument('--port', type=int, default=17001)
 p.add_argument('--load-delay', type=int, default=0, help='Delay only the guest loading check by this many milliseconds')
@@ -93,7 +99,7 @@ if a.kick:
     env['BT3_TAG_TEST_KICK']='1'
 if a.audit:env['BT3_TAG_NET_AUDIT']='1'
 if a.party:env['BT3_TAG_PARTY']='1'
-if a.late_join or a.join_in_match or a.join_in_setup:env['BT3_TAG_TEST_PLAYERS']='2'
+if a.late_join or a.join_in_match or a.join_in_setup or a.join_after_round:env['BT3_TAG_TEST_PLAYERS']='2'
 if a.party and a.rounds:env['BT3_TAG_PARTY_FLOW']=str(a.party_mode)
 if a.party and a.rounds:env['BT3_TAG_TEST_ROUNDS']=str(a.rounds)
 if a.teams:env['BT3_TAG_TEST_TEAMS']=str(a.teams)
@@ -118,6 +124,12 @@ if a.case:env['BT3_TAG_NET_CASE']=str(a.case)
 if a.case==3:env['BT3_TAG_TEST_BEAM_ASSIST']='1'
 if a.case==4:env['BT3_TAG_TEST_MULTI_BEAMS']='1'
 if a.case in (6,7):env['BT3_TAG_TEST_CINEMA']=str(a.case-5)
+if a.custom_transform:
+    assert a.case==6 and a.custom, 'Custom transformation fixture requires case 6 and a shared custom fighter'
+    env['BT3_TAG_TEST_CINEMA']='28'
+if a.custom_exit_after:
+    assert a.custom and a.custom_exit_after>0
+    env['BT3_TAG_CUSTOM_TEST_EXIT_AFTER']=str(a.custom_exit_after)
 jobs=[];completed=False;disconnected=False;disconnect_at=None;rejoined=False
 # Members that are expected to drop out while the others keep playing.
 victims={a.freeze,a.hold_start,'guest' if a.party and a.load_delay else None}-{None}
@@ -189,8 +201,22 @@ def note():
 expected={1:['PASS 105'],2:['PASS 206'],3:['PASS check=99'],4:['PASS check=99'],6:['PASS check=99'],7:['PASS check=99'],8:['PASS 801','PASS 802','PASS 803'],10:['PASS 2510'],12:['PASS 2512']}
 if a.party and a.rounds:expected[9]=['PASS 2500','PASS 2501']
 
+libraries={}
+def library_hashes(path):
+    return {p.relative_to(path).as_posix():hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in path.rglob('*') if p.is_file()} if path.exists() else {}
+
 def spawn(name):
     e=env.copy();e['BT3_SAVES']=str(out/('saves-'+name));e['BT3_SETTINGS']=str(settings_file(name))
+    for item in a.client_data:
+        client,path=item.split('=',1)
+        if client==name:e['BT3_DATA']=str(pathlib.Path(path).resolve())
+    for item in a.custom:
+        client,index=item.split(':',1)
+        if client==name:e['BT3_TAG_CUSTOM_TEST_INDEX']=str(int(index))
+    if a.custom:
+        library=pathlib.Path(e['BT3_DATA'])/'mods'
+        libraries.setdefault(library,library_hashes(library))
     for item in a.slow:
         if item.split(':')[0]==name:e['BT3_TAG_TEST_SLOW_MS']=item.split(':')[1]
     for item in a.hitch:
@@ -249,10 +275,11 @@ try:
             while time.time()<until and 'Choose teams.' not in jobs[0][3].read_text(errors='replace'):time.sleep(.1)
             assert 'Choose teams.' in jobs[0][3].read_text(errors='replace'), 'The host did not reach the team setup page'
             time.sleep(1)
-        if (a.late_join or a.join_in_match) and name=='player2':
+        if (a.late_join or a.join_in_match or a.join_after_round) and name=='player2':
             until=time.time()+90
             def join_point(log):
                 content=log.read_text(errors='replace')
+                if a.join_after_round:return content.count('Loading the match...')>=3 and 'frame 600,' in content.rsplit('Loading the match...',1)[-1]
                 return ('frame 600,' in content.rsplit('Loading the match...',1)[-1] and content.count('Loading the match...')==2) if a.join_in_match else 'frame 1200,' in content
             while time.time()<until and not all(join_point(log) for _,_,_,log in jobs):time.sleep(.1)
             assert all(join_point(log) for _,_,_,log in jobs), 'Initial clients did not reach the join point'
@@ -329,9 +356,15 @@ try:
             caught=re.findall(r'caught up to practice frame (\d+)',jobs[0][3].read_text(errors='replace'))
             party_done=bool(caught) and all(max(map(int,re.findall(r'frame (\d+),',log.read_text(errors='replace')) or ['0']))>int(caught[-1])+600 for name,_,_,log in jobs if not(a.rejoin and name=='guest'))
         if party_done:completed=True;break
-        if a.rounds and all(return_complete(log.read_text(errors='replace')) for name,_,_,log in jobs if not(a.join_in_match and name=='player2')):
-            if not a.join_in_match or 'frame 600,' in jobs[-1][3].read_text(errors='replace'):completed=True;break
-        if a.disconnect and not disconnected and all('frame 600,' in log.read_text(errors='replace') for _,_,_,log in jobs):
+        if a.custom_exit_after and all('custom assets: restored local registry and removed temporary room' in log.read_text(errors='replace') for _,_,_,log in jobs):
+            completed=True;break
+        if not a.custom_exit_after and a.rounds and all(return_complete(log.read_text(errors='replace')) for name,_,_,log in jobs if not((a.join_in_match or a.join_after_round) and name=='player2')):
+            if not(a.join_in_match or a.join_after_round) or 'frame 600,' in jobs[-1][3].read_text(errors='replace'):completed=True;break
+        custom_disconnect_ready=not a.disconnect_after_custom or all(
+            'custom assets: registered entries=2 forms=3' in log.read_text(errors='replace') and
+            content.count('Loading the match...')>=2 and 'frame 600,' in content.rsplit('Loading the match...',1)[-1]
+            for _,_,_,log in jobs for content in [log.read_text(errors='replace')])
+        if a.disconnect and not disconnected and custom_disconnect_ready and all('frame 600,' in log.read_text(errors='replace') for _,_,_,log in jobs):
             victim=next(proc for name,proc,_,_ in jobs if name==a.disconnect);victim.terminate();disconnected=True;disconnect_at=time.time()
         if disconnected and a.disconnect=='watch0' and time.time()-disconnect_at>8:
             assert all(proc.poll() is None for name,proc,_,_ in jobs if name!='watch0'), 'Spectator departure stopped a player'
@@ -407,14 +440,20 @@ for name,proc,_,log in jobs:
     if speeds:assert set(speeds)=={a.host_speed},(log,speeds,a.host_speed)
     for wanted in a.expect:
         if wanted.split(':',1)[0]==name:assert wanted.split(':',1)[1] in content,(log,wanted)
+    if a.custom_exit_after:
+        assert 'custom assets: restored local registry and removed temporary room' in content,(log,'room cleanup did not complete')
     for unwanted in a.reject:
         if unwanted.split(':',1)[0]==name:assert unwanted.split(':',1)[1] not in content,(log,unwanted)
+    if (a.join_in_match or a.join_after_round) and name=='player2':
+        assert 'frame 600,' in content and (a.join_after_round or 'A match is in progress.' in content), log
+        continue # This participant joins practice; it did not play the earlier team match.
+    if name==a.disconnect or (a.rejoin and name=='guest'):continue
     if a.teams and a.teams>=3 and a.rounds:
         # Three to five teams: every copy starts each match from the same table of teams and owners, and
         # every copy that reaches the result names the same winning team.
         plans[name]=re.findall(r'tagnet: (\d teams, by setup slot: .*)',content)
         assert len(plans[name])>=a.rounds and all(p.startswith(str(a.teams)) for p in plans[name]),(log,'no match of %d teams'%a.teams,plans[name])
-        if name not in victims:
+        if name not in victims and not(a.disconnect and not a.then_return):
             winners[name]=decided(final.get(name,content) if watched else content)
             assert len(winners[name])==a.rounds,(log,'the match was not decided',winners[name])
     if watched:
@@ -434,7 +473,9 @@ for name,proc,_,log in jobs:
     if a.join_in_match and name=='player2':
         assert 'A match is in progress.' in content and 'frame 600,' in content, log
         continue
-    if a.rounds:
+    if a.disconnect_after_custom and name!=a.disconnect:
+        assert 'Their fighter is now a CPU' in content and 'frame 1800,' in content.rsplit('Loading the match...',1)[-1],log
+    elif a.rounds:
         assert return_complete(content), log
         for marker in expected.get(a.case,[]):
             if a.party and name=='host' and marker=='PASS 2500':continue
@@ -456,9 +497,12 @@ for name,proc,_,log in jobs:
     if a.disconnect=='host':assert 'PASS 2600' in content,log
 if plans:
     assert len(set(tuple(v[:a.rounds]) for v in plans.values()))==1,('the copies do not agree on the teams',plans)
-    assert len(set(tuple(v) for v in winners.values()))==1,('the copies do not agree on the winner',winners)
+    if winners:assert len(set(tuple(v) for v in winners.values()))==1,('the copies do not agree on the winner',winners)
     for line in next(iter(plans.values()))[:a.rounds]:print('TEAMS',line,flush=True)
-    print('WINNER',' / '.join(next(iter(winners.values()))),'on',', '.join(sorted(winners)),flush=True)
+    if winners:print('WINNER',' / '.join(next(iter(winners.values()))),'on',', '.join(sorted(winners)),flush=True)
 if a.disconnect:assert disconnected, 'Disconnect point was not reached'
 if a.freeze:assert frozen_at, 'Freeze point was not reached'
+for library,before in libraries.items():
+    assert library_hashes(library)==before, ('Saved character library changed during network test',library)
+if libraries:print('PASS: every saved custom-character library remained byte-identical',flush=True)
 print('PASS: room clients completed the requested checks',flush=True)

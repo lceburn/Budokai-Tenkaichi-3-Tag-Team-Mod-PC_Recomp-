@@ -4,7 +4,9 @@ from pathlib import Path
 from PIL import Image
 root=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser();p.add_argument('--bt4',action='store_true');p.add_argument('--case',default='room');p.add_argument('--window',default='800x600')
-p.add_argument('--exe',type=Path,default=root/'port/build/bt3.exe');p.add_argument('--locale',default='en');a=p.parse_args()
+p.add_argument('--exe',type=Path,default=root/'port/build/bt3.exe');p.add_argument('--locale',default='en')
+p.add_argument('--data',type=Path,help='Separate private imported data and saved library')
+p.add_argument('--port',type=int,default=17031);a=p.parse_args()
 cases={
  'home':('',400,False),
  'host':('150:cross,210:cross',450,False),
@@ -16,6 +18,9 @@ cases={
  'lobby-host-settings':('300:down,350:down,400:down,450:down,500:down,560:cross',750,True),
  'room':('',400,True),
  'fighter':('150:cross,210:right',320,True),
+ 'custom-tail':('150:cross,240:up,300:right',350,True),
+ 'custom-share':('150:cross,240:up,300:right,360:cross,420:cross,480:cross,540:cross',650,True),
+ 'custom-reopen':('150:cross,240:up,300:right,360:cross,420:cross,480:cross,540:cross,600:cross',750,True),
  'cpu-difficulty':('150:down,210:cross,270:cross,330:cross,390:cross,450:cross,510:down',550,True),
  'z-hard':('150:down,210:cross,270:cross,330:cross,390:cross,450:cross,510:down,570:down',610,True),
  'z-hard-save':('150:down,210:cross,270:cross,330:cross,390:cross,450:cross,510:down,570:down,630:cross',730,True),
@@ -35,9 +40,11 @@ shot=out/'screen.ppm';shot.unlink(missing_ok=True)
 env={k:v for k,v in os.environ.items() if not k.startswith('BT3_')}
 env.update(BT3_GS='gpu',BT3_WINDOW=a.window,BT3_FULLSCREEN='0',BT3_TAG_TEAM='1',BT3_TAG_MENU_TEST='main',BT3_MENU_LANG=a.locale,BT3_UPDATE_CHECK='0',BT3_NOSOUND='1',BT3_PACED='1',BT3_SAVES=str(out/'saves'),BT3_SETTINGS=str(out/'settings.txt'),BT3_PAD=pad,BT3_UI_SHOT=f'{end}:{shot.relative_to(root).as_posix()}')
 if a.case not in ('settings-entry','lobby-entry','modes-bottom','main-back'):env['BT3_TAG_ONLINE']='1'
-if host:env.update(BT3_TAG_HOST='17031',BT3_TAG_TEST_SIZE='5,5')
+if host:env.update(BT3_TAG_HOST=str(a.port),BT3_TAG_TEST_SIZE='5,5')
 if a.case=='lobby-host-settings':env['BT3_TAG_PARTY']='1'
 if a.bt4:env['BT3_DATA']=str(root/'gamedata-bt4')
+if a.data:env['BT3_DATA']=str(a.data.resolve())
+if a.case.startswith('custom-'):env.update(BT3_WARRIOR_MODELS='1',BT3_TAG_NET_CASE='6')
 path=out/'runtime.log'
 with path.open('w') as log:
  proc=subprocess.Popen([str(a.exe.resolve())],cwd=root,env=env,stdout=log,stderr=log)
@@ -59,11 +66,16 @@ assert 'crashed:' not in text
 expected={'lobby-host-settings':(4,4),'lobby-entry':(81,0),'settings-entry':(4,4),'modes-bottom':(4,1),'main-back':(4,0),'home':(81,0),'host':(81,2),'address':(81,1),
  'z-hard':(82,5),'z-hard-save':(81,2),'cpu-difficulty':(82,5),'cpu-save':(81,2),'room':(81,2),'fighter':(82,0),'fighter-save':(81,2),'stage':(81,4),
  'music':(81,5),'z-hard-rules':(81,6),'rules':(81,6),'options':(81,8),'roles':(81,2),'return':(4,2)}
+expected.update({'custom-tail':(82,0),'custom-share':(81,2),'custom-reopen':(82,0)})
 states=[tuple(map(int,m)) for m in re.findall(r'page=(\d+) state=(\d+),',text)]
 assert states[-1]==expected[a.case], (a.case,states[-1],expected[a.case])
 if a.case=='z-hard-save':assert 'state=6,-1,4,' in text, text[-2500:]
 if a.case=='roles':assert 'state=2,1,2,0,3' in text
 if a.case=='fighter-save':assert re.search(r'page=81 state=2,0,2,0,3',text)
+if a.case in ('custom-share','custom-reopen'):assert 'custom assets: admitted owner=0 first=512 forms=2' in text
+if a.case=='custom-tail':assert re.search(r'page=82 state=0,-1,\d+,250,0',text),text[-1500:]
+if a.case=='custom-reopen':assert re.search(r'frame=60\d page=82 state=0,-1,\d+,250,0',text),text[-1500:]
+if a.case.startswith('custom-'):assert not any(state in ((81,11),(81,12)) for state in states), 'Separate custom picker page was used'
 with Image.open(shot) as img:
  requested=tuple(map(int,a.window.split('x')))
  # The native window rounds its aspect ratio to thousandths (1280 can be 1279).

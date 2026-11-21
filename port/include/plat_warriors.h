@@ -18,7 +18,27 @@ enum { PORT_WARRIOR_MODEL_3=10, PORT_WARRIOR_DAMAGE_3,
        PORT_WARRIOR_MODEL_4, PORT_WARRIOR_DAMAGE_4, PORT_WARRIOR_FILE_ROLES };
 enum { PORT_WARRIOR_FIRST_CHARACTER=250, PORT_WARRIOR_PLAYABLE_MAX=4,
        PORT_WARRIOR_FILE_BASE=0x40000, PORT_WARRIOR_FILE_STRIDE=16 };
+/* Room identities do not occupy the legacy byte-sized local character range.
+   Capacity counts base fighters AND every linked transformation. */
+enum { PORT_WARRIOR_SESSION_FIRST=512, PORT_WARRIOR_SESSION_MAX=19 };
+/* Read-only saved-local resource keys, separate from the active room registry. */
+enum { PORT_WARRIOR_LOCAL_KEY=128 };
+/* Main-menu/lobby boundary only. Each root must be a validated, relative
+   .warrior-sessions/<session>/<form> directory. Activation is all-or-nothing;
+   passing count=0 restores the local registry without writing its library. */
+int PortWarriors_Session(const char *const *roots,int count);
+int PortWarriors_SessionActive(void);
+unsigned PortWarriors_SessionEpoch(void);
 int PortWarriors_Count(void);
+/* Saved-local metadata only, including while a room registry is active. This
+   read-only copy never exposes a downloaded fighter as an exportable local. */
+typedef struct PortWarriorLocal {
+    char name[192],style[192],voice[192],attack[5][32];
+    int aura,rules,target[4],field[4][5];
+    char file[PORT_WARRIOR_FILE_ROLES][1600];
+} PortWarriorLocal;
+int PortWarriors_LocalCount(void);
+int PortWarriors_LocalCopy(int index,PortWarriorLocal *out);
 /* Main-menu authoring only: no live battle may retain custom resource bindings. */
 void PortWarriors_Reload(void);
 /* Positive owner tag activates a process-local staging path; zero restores. */

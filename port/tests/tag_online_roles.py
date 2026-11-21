@@ -1,6 +1,7 @@
 """Real native host: ten player seats, ten spectators, and lobby role changes."""
 import argparse
 import json
+import hashlib
 import os
 import pathlib
 import re
@@ -33,7 +34,7 @@ logpath=out/'host.log'
 log=logpath.open('w')
 process=subprocess.Popen([str(exe)],cwd=root,env=env,stdout=log,stderr=log)
 # The hello this program expects: the protocol number of its own source tree and the identity written into it at link time.
-protocol=int(re.search(r'PROTOCOL=(\d+)',(exe.parents[2]/'port/src/gs/tag_net.c').read_text(errors='replace')).group(1))
+protocol=int(re.search(r'PROTOCOL=(\d+)',(root/'port/src/gs/tag_net.c').read_text(errors='replace')).group(1))
 clients=[]
 
 class Client:
@@ -59,6 +60,11 @@ class Client:
             assert 8<=size<=4096
             if len(self.buf)<size:break
             data=self.buf[8:size];self.buf=self.buf[size:]
+            if kind==33:self.custom_generation=struct.unpack('!I',data)[0]
+            if kind==34:
+                magic,revision,count,forms=struct.unpack_from('!4I',data)
+                assert magic==0x574e4331 and count==0 and forms==0 and len(data)==16
+                self.send(35,struct.pack('!II',revision,self.custom_generation)+hashlib.blake2b(data,digest_size=32).digest())
             if kind==2:self.c=list(struct.unpack('!'+'i'*(len(data)//4),data))
             if kind==3:self.ready=list(struct.unpack('!11I',data))
             if kind==16:self.role=struct.unpack('!I',data)[0]

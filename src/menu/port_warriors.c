@@ -124,6 +124,10 @@ static void zw_update(void) {
     if(page==ZW_LIBRARY) {
         Ps_Move(&libraryRow,PortZwNative_Count()+2);
         if(pressed&PADG_TRIANGLE) {if(PortZwNative_Dirty())zw_page(ZW_DISCARD);else zw_end();}
+        else if((pressed&PADG_SQUARE) && libraryRow>0 && libraryRow<=PortZwNative_Count()) {
+            warrior=PortZwNative_Duplicate(libraryRow-1);
+            if(warrior<0)zw_status();else {libraryRow=warrior+1;tab=0;row=0;zw_page(ZW_EDIT);}
+        }
         else if(pressed&PADG_CROSS) {
             if(libraryRow==PortZwNative_Count()+1) {if(PortZwNative_Dirty())zw_page(ZW_DISCARD);else zw_end();}
             else if(libraryRow==0) {
@@ -255,6 +259,7 @@ static void zw_draw(void) {
             zw_name(libraryRow-1,heading,sizeof(heading));Ps_Heading(322,93,heading,1.15f,175,0x80);
         }
         Ps_Prompt(0,"Create / Edit");Ps_Prompt(2,"Back");
+        if(libraryRow>0 && libraryRow<=PortZwNative_Count())Ps_Prompt(1,"Duplicate");
         Ps_Copy(line,"Choose a warrior to edit, or create a new one.",sizeof(line));
     }else if(page==ZW_EDIT) {
         static char *tabs[]={"WARRIOR","PARTS","MOVES","FORMS"};

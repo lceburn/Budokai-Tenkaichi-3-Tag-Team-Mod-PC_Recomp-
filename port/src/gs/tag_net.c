@@ -29,6 +29,8 @@ typedef int tn_socket;
 #endif
 #include "../../include/plat_game.h"
 #include "../../include/tag_text.h"
+#include "../../include/warrior_net_catalog.h"
+#include "../../include/warrior_net_pack.h"
 
 extern void Gs_HoldFrame(void);
 extern int Port_RollCan(void),Port_RollSave(void),Port_PadRead(int,unsigned char *);
@@ -37,9 +39,12 @@ extern int Port_TagOption(int);
 extern unsigned long long Port_NetDigest(void);
 extern int gPortResim;
 
-enum { PROTOCOL=8, MAGIC=0x544e4554, PAD=18, RING=8192, MAX_PACKET=4096, QUEUE=262144,
+enum { PROTOCOL=10, MAGIC=0x544e4554, PAD=18, RING=8192, MAX_PACKET=4096, QUEUE=262144,
        TN_HELLO=1, TN_CONFIG, TN_READY, TN_START, TN_LOADED, TN_GO, TN_INPUT, TN_DIGEST, TN_LEAVE, TN_REJECT, TN_EDIT, TN_FINISHED, TN_ROOM, TN_PING, TN_PEERS, TN_ROLE, TN_NOTICE, TN_PRACTICE_END,
        TN_HISTORY,TN_REPLAY_PROGRESS,TN_MEMBER,TN_PRACTICE_EDIT,TN_PRACTICE_LOADOUT,TN_BRACKET,TN_PONG,TN_ROSTER,TN_SCORES,TN_GONE,TN_WAIT,TN_AHEAD,TN_CLOCKS,TN_REPORT,
+       TN_CUSTOM_SEAT,TN_CUSTOM_CATALOG,TN_CUSTOM_ACK,
+       TN_CUSTOM_GET,TN_CUSTOM_BEGIN,TN_CUSTOM_CHUNK,TN_CUSTOM_END,
+       TN_CUSTOM_OFFER,TN_CUSTOM_ACCEPT,TN_CUSTOM_RESULT,
        PEERS=TN_PLAYERS+TN_SPECTATORS-1, DELAY=2, DELAY_MAX=5, ROLLBACK=8, WINDOW_MAX=12,
        /* Pings go out every second. The host hands a loaded lobby member that is silent for SILENT_MS to the
           CPU; a guest gives the host itself HOST_SILENT_MS. LOAD_MS and RESULT_MS bound the other two waits. */
@@ -56,13 +61,32 @@ typedef struct Peer {
     unsigned replayCursor,replayAck;
     int catching,ping,gone;
     unsigned pingToken;Uint64 pingSent,joined;
+    unsigned customGeneration,customCatalogSent;
+    WntReceive customRx;
+    WntSend customTx;
+    unsigned customRequest,customFighter,customBase,customRevision;
+    Uint64 customRequestDeadline;
+    TlLoadout customSelection;
+    int customCpu;
 } Peer;
 static Peer peers[PEERS];
+static WncCatalog customCatalog;
+static int customLocalRoom[PORT_WARRIOR_PLAYABLE_MAX];
+static unsigned customSerial=1,customSelfGeneration=1,customAckSent;
+static int customCatalogReceived;
+static void custom_reset(void),custom_tick(void),custom_drop(Peer *p);
+static int custom_local_ready(void),custom_peer_ready(const Peer *p);
+static int custom_packet(Peer *p,int type,const unsigned char *data,unsigned n);
+static void custom_cleanup(void);
+static int customWorldLive,customCleanupPending;
 static tn_socket listener=TN_BAD;
 static SDL_SpinLock uiLock;
 static TagNetStatus status;
 static TagNetConfig config,pendingConfig;
 static int role=-1,host,phase,ready[TN_PLAYERS],pendingStart,pendingRole,pendingPort,pendingEdit,pendingReady=-1,pendingLeave,pendingSwitch=-1,pendingFighter=-1;
+static int pendingCustom=-1,pendingCustomFighter,pendingCustomCpu;
+static unsigned pendingCustomRevision;
+static TlLoadout pendingCustomSelection;
 static char pendingAddress[128];
 static int watchActor,freeCam,resim,loaded,go,roomInitialized,returned;
 static unsigned baseBlank,frame,live,checked,have[TN_PLAYERS],usedStamp[RING],inputStamp[TN_PLAYERS][RING],sentDigest;
@@ -368,7 +392,7 @@ static void announce(const char *cause,int seat,const char *next,int stop) {
     if(stop){phase=5;go=0;resim=0;gPortResim=0;room_stopped();}
     if(stop || phase>=3 || hostMenu)Port_UiNotice(local);
 }
-static void close_peer(Peer *p) { if(p->fd!=TN_BAD)closesocket(p->fd);memset(p,0,sizeof(*p));p->fd=TN_BAD;p->ping=-1; }
+static void close_peer(Peer *p) { custom_drop(p);if(p->fd!=TN_BAD)closesocket(p->fd);memset(p,0,sizeof(*p));p->fd=TN_BAD;p->ping=-1; }
 static int blocked(void) {
 #ifdef _WIN32
     return WSAGetLastError()==WSAEWOULDBLOCK || WSAGetLastError()==WSAEINPROGRESS;
@@ -420,6 +444,17 @@ void TagNet_Start(int r,const char *address,int port) {
     snprintf(pendingAddress,sizeof(pendingAddress),"%s",address);pendingStart=1;SDL_UnlockSpinlock(&uiLock);
 }
 void TagNet_Edit(const TagNetConfig *c) { SDL_LockSpinlock(&uiLock);pendingConfig=*c;pendingEdit=1;SDL_UnlockSpinlock(&uiLock); }
+int TagNet_CustomLocal(int character) {
+    int i;for(i=0;i<PORT_WARRIOR_PLAYABLE_MAX;i++)
+        if(customLocalRoom[i]>=PORT_WARRIOR_SESSION_FIRST && customLocalRoom[i]==character)
+            return PORT_WARRIOR_FIRST_CHARACTER+i;
+    return character;
+}
+void TagNet_ChooseCustom(int index,int fighter,unsigned revision,const TlLoadout *selection,int cpuLevel) {
+    if(!selection)return;
+    SDL_LockSpinlock(&uiLock);pendingCustom=index;pendingCustomFighter=fighter;
+    pendingCustomRevision=revision;pendingCustomSelection=*selection;pendingCustomCpu=cpuLevel;SDL_UnlockSpinlock(&uiLock);
+}
 void TagNet_Ready(int r) { SDL_LockSpinlock(&uiLock);pendingReady=r!=0;SDL_UnlockSpinlock(&uiLock); }
 void TagNet_SwitchRole(int playing,int fighter) {
     SDL_LockSpinlock(&uiLock);pendingSwitch=playing!=0;pendingFighter=fighter;SDL_UnlockSpinlock(&uiLock);
@@ -758,6 +793,7 @@ static void stream_history(Peer *p) {
 }
 static void send_config(Peer *p) {
     unsigned char data[sizeof(config)];unsigned i;const TagNetConfig *c=&config;static TagNetConfig bad;
+    if(customCatalog.count && !custom_peer_ready(p))return;
     if(getenv("BT3_TAG_TEST_BAD_TEAMS") && TagNet_TeamRoom(&config)) {
         /* Opt-in room regression: the guests are sent this room with nobody on its last team and must refuse it. */
         bad=config;for(i=0;i<10;i++)if(bad.lobby.draft.team[i]==bad.lobby.draft.teams-1)bad.lobby.draft.team[i]=0;
@@ -918,10 +954,77 @@ static void input_take(int who,unsigned at,const unsigned char *pad) {
     memcpy(inputs[who][at%RING],pad,PAD);inputStamp[who][at%RING]=at;
     while(inputStamp[who][have[who]%RING]==have[who])have[who]++;
 }
+/* Room assets never enter rollback state. Catalog acknowledgements are bound to
+   the connection generation so reusing an old player seat cannot inherit ready. */
+#include "tag_net_assets.h"
+static void custom_reset(void) {
+    custom_cleanup();
+    Wnc_Init(&customCatalog);customSerial=customSelfGeneration=1;customAckSent=0;customCatalogReceived=0;
+}
+static void custom_drop(Peer *p) {
+    Wnt_SendCancel(&p->customTx);Wnt_Cancel(&p->customRx);p->customRequest=0;
+    if(host && p->customGeneration)Wnc_Member(&customCatalog,(int)(p-peers)+1,0,-1,p->customGeneration);
+}
+static int custom_local_ready(void) {
+    int i;
+    if(customOffer.state || customCleanupPending || customRegistered!=customCatalog.count)return 0;
+    for(i=0;i<PEERS;i++)if(peers[i].customRx.state || peers[i].customRequest)return 0;
+    return (host || customCatalogReceived) && Wnc_CanReady(&customCatalog);
+}
+static int custom_peer_ready(const Peer *p) {
+    int slot=(int)(p-peers)+1;
+    return slot>0 && slot<WNC_PEERS && customCatalog.members[slot].present &&
+        customCatalog.members[slot].ack==customCatalog.revision;
+}
+static void custom_tick(void) {
+    int i;unsigned char hash[WNT_HASH];
+    if(phase<2 || phase>4)return;
+    customCatalog.locked=phase!=2;
+    if(host) {
+        Wnc_Member(&customCatalog,0,1,0,customSelfGeneration);
+        if(Wnc_CanReady(&customCatalog)){Wnc_Digest(&customCatalog,hash);Wnc_Ack(&customCatalog,0,customSelfGeneration,customCatalog.revision,hash);}
+        for(i=0;i<PEERS;i++)if(peers[i].hello && peers[i].fd!=TN_BAD) {
+            Peer *p=&peers[i];WncMember *m=&customCatalog.members[i+1];int owner=p->role<TN_PLAYERS?p->role:-1;
+            if(!p->customGeneration){if(customSerial==UINT32_MAX){close_peer(p);continue;}p->customGeneration=++customSerial;}
+            if(!m->present || m->owner!=owner || m->generation!=p->customGeneration) {
+                Wnc_Member(&customCatalog,i+1,1,owner,p->customGeneration);p->customCatalogSent=0;
+            }
+            if(p->customCatalogSent!=customCatalog.revision) {
+                unsigned char seat[4],wire[WNC_WIRE_MAX];unsigned n=Wnc_Encode(&customCatalog,wire,sizeof(wire));
+                put32(seat,p->customGeneration);send_packet(p,TN_CUSTOM_SEAT,seat,sizeof(seat));
+                if(n){send_packet(p,TN_CUSTOM_CATALOG,wire,n);p->customCatalogSent=customCatalog.revision;}
+            }
+        }
+    }else if(peers[0].hello && customSelfGeneration && custom_local_ready() && customAckSent!=customCatalog.revision) {
+        unsigned char data[8+WNT_HASH];Wnc_Digest(&customCatalog,hash);
+        put32(data,customCatalog.revision);put32(data+4,customSelfGeneration);memcpy(data+8,hash,WNT_HASH);
+        send_packet(&peers[0],TN_CUSTOM_ACK,data,sizeof(data));customAckSent=customCatalog.revision;
+        fprintf(stderr,"custom catalog: verified revision=%u forms=%u\n",customCatalog.revision,customCatalog.forms);
+    }
+    custom_assets_tick();
+}
 static void handle(Peer *p,int type,const unsigned char *data,unsigned n) {
     unsigned i;
     if(!p->hello && type!=TN_HELLO && !(!host && type==TN_REJECT))return;
-    if(type==TN_HELLO) {
+    if(custom_packet(p,type,data,n))return;
+    if(type==TN_CUSTOM_SEAT && !host && n==4 && get32(data)) {
+        customSelfGeneration=get32(data);customAckSent=0;return;
+    }else if(type==TN_CUSTOM_CATALOG && !host) {
+        if(!Wnc_Decode(&customCatalog,data,n)){failed("The custom character catalog is invalid. Room stopped.");return;}
+        customCatalogReceived=1;customAckSent=0;return;
+    }else if(type==TN_CUSTOM_ACK && host && n==8+WNT_HASH) {
+        if(Wnc_Ack(&customCatalog,(int)(p-peers)+1,get32(data+4),get32(data),data+8)) {
+            fprintf(stderr,"custom catalog: peer=%d acknowledged revision=%u forms=%u\n",p->role,customCatalog.revision,customCatalog.forms);
+            if(customCatalog.count)send_config(p);
+            if(customCatalog.count && phase==4 && config.party && config.practice && p->catching) {
+                unsigned char start[16];put32(start,config.revision);put32(start+4,roundId);
+                put32(start+8,inputDelay);put32(start+12,historyCount);send_packet(p,TN_START,start,sizeof(start));
+            }
+        }
+        return;
+    }else if(type==TN_START && !host && customCatalog.count && !custom_local_ready()) {
+        failed("Custom characters have not finished loading. Match refused.");return;
+    }else if(type==TN_HELLO) {
         if(p->hello)return;
         const char *mismatch=NULL;
         if(n!=40 || get32(data)!=MAGIC || get32(data+4)!=PROTOCOL)
@@ -948,7 +1051,7 @@ static void handle(Peer *p,int type,const unsigned char *data,unsigned n) {
                 p->role=id;p->hello=1;p->joined=SDL_GetTicks();lastPing=0;send_packet(p,TN_HELLO,data,n);put32(b,id);put32(b+4,partyRoom.members[id].generation);send_packet(p,TN_ROLE,b,8);
                 send_config(p);
                 if(phase==2){TagNetConfig c=config;c.lobby=partyRoom;apply_edit(&c);}
-                else if(config.practice) {unsigned char start[16];p->catching=1;p->loaded=0;put32(start,config.revision);put32(start+4,roundId);put32(start+8,inputDelay);put32(start+12,historyCount);send_packet(p,TN_START,start,sizeof(start));}
+                else if(config.practice) {unsigned char start[16];p->catching=1;p->loaded=0;put32(start,config.revision);put32(start+4,roundId);put32(start+8,inputDelay);put32(start+12,historyCount);if(!customCatalog.count || custom_peer_ready(p))send_packet(p,TN_START,start,sizeof(start));}
                 else {const char *s="A match is in progress. You will join the lobby when it ends.";send_packet(p,TN_NOTICE,s,(unsigned)strlen(s)+1);send_tournament(p);}
                 say("A guest joined the lobby.");return;
             }
@@ -981,7 +1084,7 @@ static void handle(Peer *p,int type,const unsigned char *data,unsigned n) {
         }
         tournament=t;
     } else if(type==TN_READY && phase==2 && n==4+4*TN_PLAYERS && get32(data)==(unsigned)config.revision) {
-        if(host && p->role<TN_PLAYERS){ready[p->role]=get32(data+4+4*p->role)!=0;ready_packet();}
+        if(host && p->role<TN_PLAYERS){ready[p->role]=get32(data+4+4*p->role)!=0 && custom_peer_ready(p);ready_packet();}
         else if(!host)for(i=0;i<TN_PLAYERS;i++)ready[i]=get32(data+4+4*i)!=0;
     } else if(type==TN_EDIT && host && phase==2 && !tournament.active && p->role<TN_PLAYERS && n==sizeof(config)) {
         TagNetConfig request,c=config;int selected=-1,previous=-1;
@@ -1182,11 +1285,13 @@ static void pump(void) {
         if(mask){put32(b,roundId);put32(b+4,mask);memcpy(b+8,aheadTable,sizeof(aheadTable));broadcast(TN_CLOCKS,b,sizeof(b),NULL);}
     }
     if(reportUntil && phase!=5 && SDL_GetTicks()>=reportUntil)report_finish();
+    custom_tick();
 }
 static void begin_socket(int r,const char *address,int port) {
     struct sockaddr_in addr;tn_socket fd;int i,on=1;
     if(r<0 || r>2 || port<1024 || port>65535)return;
     for(i=0;i<PEERS;i++)close_peer(&peers[i]);
+    custom_reset();
     reap(1);
     if(listener!=TN_BAD){closesocket(listener);listener=TN_BAD;}
     memset(&addr,0,sizeof(addr));addr.sin_family=AF_INET;addr.sin_port=htons((unsigned short)port);
@@ -1220,11 +1325,13 @@ static void begin_socket(int r,const char *address,int port) {
     }
 }
 static void commands(void) {
-    int start,edit,r,port,rd,leave,sw,fighter,mode,practice;char address[128];TagNetConfig c;
+    int start,edit,r,port,rd,leave,sw,fighter,mode,practice,custom,customFighter,customCpu;unsigned customRevision;char address[128];TagNetConfig c;TlLoadout customSelection;
     SDL_LockSpinlock(&uiLock);start=pendingStart;pendingStart=0;r=pendingRole;port=pendingPort;
     memcpy(address,pendingAddress,sizeof(address));edit=pendingEdit;pendingEdit=0;c=pendingConfig;
     rd=pendingReady;pendingReady=-1;leave=pendingLeave;pendingLeave=0;
-    sw=pendingSwitch;pendingSwitch=-1;fighter=pendingFighter;mode=pendingMode;if(mode>=0){chosenPreset=pendingPreset;chosenTeams=pendingTeams;}pendingMode=-1;practice=pendingPractice;pendingPractice=0;SDL_UnlockSpinlock(&uiLock);
+    sw=pendingSwitch;pendingSwitch=-1;fighter=pendingFighter;mode=pendingMode;if(mode>=0){chosenPreset=pendingPreset;chosenTeams=pendingTeams;}pendingMode=-1;practice=pendingPractice;pendingPractice=0;
+    custom=pendingCustom;pendingCustom=-1;customFighter=pendingCustomFighter;customRevision=pendingCustomRevision;customSelection=pendingCustomSelection;customCpu=pendingCustomCpu;
+    SDL_UnlockSpinlock(&uiLock);
     if(mode>=0 && host && TagNet_IsPractice())end_practice(mode);
     if(pendingKick>0) {
         int k,id=pendingKick;pendingKick=-1;
@@ -1244,6 +1351,7 @@ static void commands(void) {
             reap(1);
             if(listener!=TN_BAD){closesocket(listener);listener=TN_BAD;}
             phase=1;role=-1;host=0;say("");
+            custom_reset();
         } else {broadcast(TN_LEAVE,NULL,0,NULL);pump();failed("You left the room.");}
     }
     if(start && phase<=2)begin_socket(r,address,port);
@@ -1260,7 +1368,16 @@ static void commands(void) {
         if(host)switch_role(NULL,sw,fighter);
         else {unsigned char p[12];put32(p,config.revision);put32(p+4,sw);put32(p+8,fighter);send_packet(&peers[0],TN_ROLE,p,12);}
     }
+    if(custom>=0) {
+        if(phase!=2 || customRevision!=(unsigned)config.revision ||
+           !custom_choose(custom,(unsigned)customFighter,&customSelection,customCpu))
+            say("The saved fighter could not be shared. Check your slot and the room's form limit, then select again.");
+    }
     if(rd>=0 && phase==2 && role<TN_PLAYERS && role>=0 && sw<0 && !edit) {
+        if(rd && (!custom_local_ready() || (!config.practice && getenv("BT3_TAG_CUSTOM_TEST_INDEX") && !customProbeDone))) {
+            if(strcmp(message,"Waiting for custom character verification."))say("Waiting for custom character verification.");
+            rd=0;
+        }
         ready[role]=rd;if(host)ready_packet();else {
             unsigned char p[4+4*TN_PLAYERS]={0};put32(p,config.revision);put32(p+4+4*role,rd);send_packet(&peers[0],TN_READY,p,sizeof(p));
         }
@@ -1307,6 +1424,7 @@ static int test_team(void) {
 }
 static int all_ready(void) {
     int i;unsigned mask=player_mask();
+    if(!custom_local_ready() || !Wnc_CanStart(&customCatalog))return 0;
     if(tournament.active==2)return 0;
     if(config.party && !config.practice){if(!ready[0])return 0;}
     else if(!mask)return 0;
@@ -1341,6 +1459,10 @@ int TagNet_Room(void) {
     static unsigned long long offlineSaveHash;
     static int checkingSave;
     int i,leaveMenu=0;
+    /* Battle_Term has completed before returning here. File handles and the
+       session registry must remain alive until this safe point. */
+    customWorldLive=0;
+    if(customCleanupPending)custom_cleanup();
     if(getenv("BT3_TAG_SAVE_CHECK") && !checkingSave){offlineSaveHash=TagOnline_SaveFingerprint();checkingSave=1;}
     TagOnline_SaveScope(1);
     hostMenu=0;nativeMenu=1;TagOnlineMenu_Open();
@@ -1395,6 +1517,11 @@ int TagNet_Room(void) {
     if(!Port_RollCan())failed("Rollback state files are missing. Rebuild or restore the complete native build.");
     while(phase!=3) {
         commands();pump();
+        if(phase==2 && getenv("BT3_TAG_CUSTOM_TEST_EXIT_AFTER") &&
+           atoi(getenv("BT3_TAG_CUSTOM_TEST_EXIT_AFTER"))>0 &&
+           roundId>=(unsigned)atoi(getenv("BT3_TAG_CUSTOM_TEST_EXIT_AFTER"))) {
+            TagNet_Leave();commands();leaveMenu=1;break;
+        }
         if(host && phase==2) {
             extern int Port_GameSpeed(void);int speed=Port_GameSpeed();
             if(config.speed!=speed){TagNetConfig c=config;c.speed=speed;apply_edit(&c);}
@@ -1446,6 +1573,7 @@ close_menu:
         reap(1);
         if(listener!=TN_BAD){closesocket(listener);listener=TN_BAD;}
         phase=1;role=-1;host=0;roomMask=roomSpectators=0;
+        custom_reset();
         memset(ready,0,sizeof(ready));pendingLeave=pendingStart=pendingEdit=0;
         pendingReady=pendingSwitch=-1;publish();TagNet_Enable(0);TagOnline_SaveScope(0);
         if(checkingSave){TagNet_TestCheck(offlineSaveHash==TagOnline_SaveFingerprint(),2600);checkingSave=0;}
@@ -1480,6 +1608,7 @@ close_menu:
         fprintf(stderr,"tagnet: host remains on native mode menu; no practice battle loaded\n");
         return 2;
     }
+    customWorldLive=1;
     return 1;
 }
 /* N7: a copy that waits for the others for more than a second says for whom, and Start held for a second

@@ -35,7 +35,7 @@ static s32 cpuPrompt=-1,cpuPromptLevel,cpuApproved=-1;
 /* Shared by offline and online character picking; cancelling or starting a
    new roster must not replace the last difficulty the player confirmed. */
 static s32 cpuLastConfirmed=-1;
-static MTexRes *warriorChips[PORT_WARRIOR_PLAYABLE_MAX];
+static MTexRes *warriorChips[PORT_WARRIOR_SESSION_MAX];
 static MTexRes *TeamSel_Chip(s32 id);
 static void TeamSel_LoadWarriorChips(void);
 extern void Port_TagCpuPromptTrace(s32 event,s32 slot,s32 level);
@@ -235,15 +235,16 @@ void TeamSel_SetStageChips(void) {
 
 #ifdef PORT
 static MTexRes *TeamSel_Chip(s32 id) {
-    s32 index=id-PORT_WARRIOR_FIRST_CHARACTER;
-    if(index>=0 && index<PORT_WARRIOR_PLAYABLE_MAX && warriorChips[index])return warriorChips[index];
+    s32 index=PortGame_WarriorIndex(id);
+    if(index>=PORT_WARRIOR_LOCAL_KEY)index-=PORT_WARRIOR_LOCAL_KEY;
+    if(index>=0 && index<PORT_WARRIOR_SESSION_MAX && warriorChips[index])return warriorChips[index];
     return (MTexRes *)MPACK_AT(gTeamSel->chipPack,TEAMSEL_ART_CHARACTER(id)+1);
 }
 static void TeamSel_LoadWarriorChips(void) {
-    s32 i,count=PortGame_CharacterCount()-PORT_WARRIOR_FIRST_CHARACTER;
+    s32 i,count=PortGame_LocalPickerActive()?PortWarriors_LocalCount():PortWarriors_Count();
     memset(warriorChips,0,sizeof(warriorChips));
-    for(i=0;i<count && i<PORT_WARRIOR_PLAYABLE_MAX;i++) {
-        MTexRes *res; s32 file=PortGame_WarriorChip(PORT_WARRIOR_FIRST_CHARACTER+i);
+    for(i=0;i<count && i<PORT_WARRIOR_SESSION_MAX;i++) {
+        MTexRes *res; s32 file=PortGame_WarriorChip(PortGame_LocalPickerActive()?PORT_WARRIOR_FIRST_CHARACTER+i:PortGame_WarriorCharacter(i));
         if(file<0)continue;
         /* File reads round up to 2048-byte sectors, including their padding. */
         res=Heap_Alloc(6144,0x40,0,2);
@@ -860,7 +861,7 @@ void TeamSel_Init(s32 section) {
         ChrGrid_Build(&gTeamSel->cellCount[i], gTeamSel->grid[i], &gTeamSel->masterCount[i], gTeamSel->cells[i],
                       &gTeamSel->customCount[i], gTeamSel->custom[i]);
 #ifdef PORT
-        if(!Port_NetSession())
+        if(onlinePick || !Port_NetSession())
             gTeamSel->cellCount[i]=PortGame_WarriorGrid(gTeamSel->grid[i],gTeamSel->cellCount[i],TS_CELL_MAX);
 #endif
         gTeamSel->masterCount[i] = gTeamSel->cellCount[i];
@@ -1036,7 +1037,7 @@ void TeamSel_Term(void) {
         Flash_Destroy(&gTeamSel->flash[i]);
     }
 #ifdef PORT
-    for(i=0;i<PORT_WARRIOR_PLAYABLE_MAX;i++)if(warriorChips[i]) {
+    for(i=0;i<PORT_WARRIOR_SESSION_MAX;i++)if(warriorChips[i]) {
         Heap_Free(warriorChips[i]);warriorChips[i]=NULL;
     }
 #endif
@@ -2821,7 +2822,7 @@ s32 TeamSel_PickOnline(TsMember *member,s32 cpu,s32 *level,s32 revision) {
     TagNetStatus status;
     s32 result=1,accepted=0,done=0,frame=0,i,f,own=gMenuArc5==NULL;
     TagSession_Leave();
-    onlinePick=1;onlinePickCpu=cpu;onlinePickLevel=*level;
+    onlinePick=1;onlinePickCpu=cpu;onlinePickLevel=*level;PortGame_LocalPicker(1);
     cpuPrompt=cpuApproved=-1;
     memset(gTsProgress->team,0,sizeof(gTsProgress->team));
     gTsProgress->players=TEAMSEL_PLAYERS_VS_CPU;gTsProgress->battleType=1;
@@ -2830,8 +2831,9 @@ s32 TeamSel_PickOnline(TsMember *member,s32 cpu,s32 *level,s32 revision) {
     TeamSel_Init(2);
     for(i=0;i<gTeamSel->masterCount[0];i++) {
         TsCell *cell=&gTeamSel->cells[0][i];
-        for(f=0;f<cell->formCount;f++)if(cell->form[f]==member->chara)break;
-        if(cell->id==member->chara || f<cell->formCount) {
+        s32 initial=TagNet_CustomLocal(member->chara);
+        for(f=0;f<cell->formCount;f++)if(cell->form[f]==initial)break;
+        if(cell->id==initial || f<cell->formCount) {
             TsMember *m=&gTeamSel->side[0]->member[0];
             m->col=i%TS_COLS;m->row=i/TS_COLS;m->form=f<cell->formCount?f:0;m->color=member->color;
             TeamSel_SetChips(0);gTeamSel->side[0]->chara=cell->id;TeamSel_RequestFace(0);break;
@@ -2858,7 +2860,7 @@ s32 TeamSel_PickOnline(TsMember *member,s32 cpu,s32 *level,s32 revision) {
         if(done && ColorFade_IsOutDone() && gTeamSel->faceState==TEAMSEL_LOAD_IDLE && gTeamSel->stageState==TEAMSEL_LOAD_IDLE)break;
     }
     TeamSel_Term();if(own){Heap_Free(gMenuArc5);gMenuArc5=NULL;Snd_UnloadBank(2);}
-    Dma_ResetBuffers();*gTsProgress=saved;onlinePick=0;cpuPrompt=cpuApproved=-1;
+    Dma_ResetBuffers();*gTsProgress=saved;onlinePick=0;PortGame_LocalPicker(0);cpuPrompt=cpuApproved=-1;
     return accepted && result;
 }
 #endif

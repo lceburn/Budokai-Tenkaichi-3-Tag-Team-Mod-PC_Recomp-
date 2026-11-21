@@ -276,7 +276,8 @@ def main():
         if f.parent == imgui and o.exists() and o.stat().st_mtime > max(f.stat().st_mtime, build_rules):
             objs.append(str(o))
             continue
-        r = run(["g++", "-m32", "-std=c++17", "-c", "-O2", "-g", "-fno-pic", "-msse2", "-mfpmath=sse", "-fno-exceptions",
+        exceptions = ["-fexceptions"] if f.name == "warrior_net_pack.cpp" else []
+        r = run(["g++", "-m32", "-std=c++17", "-c", "-O2", "-g", "-fno-pic", "-msse2", "-mfpmath=sse", "-fno-exceptions"] + exceptions + [
                             "-fno-rtti", "-w", "-DIMGUI_ENABLE_TEST_ENGINE", f"-I{imgui}", f"-I{ROOT / 'port/src/gs'}", f"-I{gen}", str(f), "-o", str(o)], cwd=ROOT,
                            capture_output=True, text=True)
         if r.returncode:

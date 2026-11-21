@@ -97,6 +97,10 @@ void TagNet_Input(int player,unsigned char *data);
 void TagNet_Status(TagNetStatus *out);
 void TagNet_Start(int role,const char *address,int port);
 void TagNet_Edit(const TagNetConfig *config);
+/* Saved-local choices are never sent as local numeric character IDs. The
+   network thread exports a form family and assigns verified room IDs. */
+int TagNet_CustomLocal(int roomCharacter);
+void TagNet_ChooseCustom(int index,int fighter,unsigned revision,const TlLoadout *selection,int cpuLevel);
 void TagNet_Ready(int ready);
 /* Lobby only: release your fighter or claim an available one (-1 = automatic). */
 void TagNet_SwitchRole(int playing,int fighter);

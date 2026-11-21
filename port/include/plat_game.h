@@ -10,6 +10,9 @@ const char *PortGame_DefaultLanguage(void);
 int PortGame_VolumeCount(int volume);
 int PortGame_CharacterCount(void);
 int PortGame_IsCustomCharacter(int chara);
+/* Local library IDs and room IDs are different namespaces. */
+int PortGame_WarriorCharacter(int index);
+int PortGame_WarriorIndex(int chara);
 int PortGame_TableCharacter(int chara);
 int PortGame_UsesBT4Rules(int chara);
 /* Basic named form links only; returns 0xFF for unsupported/missing links. */
@@ -29,6 +32,10 @@ int PortGame_AdjustWarriorAnimation(const void *model,int modelSize,int motion,v
 void *PortGame_GaugeTable(void *original);
 int PortGame_IsCharacter(int chara);
 int PortGame_IsOnlineCharacter(int chara);
+/* The standard online picker may display saved-local fighters. These IDs are
+   still rejected on the wire and are exported/remapped only after selection. */
+void PortGame_LocalPicker(int enabled);
+int PortGame_LocalPickerActive(void);
 const char *PortGame_CharacterName(int chara);
 const char *PortGame_WarriorAttackName(int chara,int slot);
 int PortGame_WarriorAuraColour(int chara);

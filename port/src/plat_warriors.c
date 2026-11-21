@@ -10,7 +10,8 @@
 #include <stdint.h>
 
 extern const char *Port_FileRoot(void);
-enum { MAX_WARRIORS=32, MAX_NAME=192, MAX_RELATIVE=256 };
+enum { MAX_WARRIORS=PORT_WARRIOR_SESSION_MAX>32?PORT_WARRIOR_SESSION_MAX:32,
+       MAX_NAME=192, MAX_RELATIVE=256 };
 typedef struct WarriorFiles {
     char previewRoot[768];
     char folder[MAX_NAME];
@@ -28,6 +29,26 @@ static int initialized, count;
 static char error[256];
 static WarriorFiles previewSaved;
 static int previewActive,previewCount;
+static WarriorFiles sessionSaved[MAX_WARRIORS];
+static int sessionActive,sessionSavedCount;
+static unsigned sessionEpoch;
+static int failure(const char *message),safe_relative(const char *text,int nested);
+static int line_read(FILE *f,char *line,size_t size);
+/* Explicit private runtime fixture: only relative session paths, no writes. */
+static void test_session(void) {
+    const char *list=getenv("BT3_WARRIOR_SESSION_TEST");
+    const char *roots[PORT_WARRIOR_SESSION_MAX];char storage[PORT_WARRIOR_SESSION_MAX][768],path[1600],extra[768];
+    FILE *f;int n=0,result=0,good=1;
+    if(!list || !*list || error[0])return;
+    if(strncmp(list,".warrior-sessions/",18) || !safe_relative(list,1) ||
+       snprintf(path,sizeof(path),"%s/%s",Port_FileRoot(),list)>=(int)sizeof(path)) {failure("Unsafe session test list");return;}
+    f=fopen(path,"rb");if(!f){failure("Missing session test list");return;}
+    while(n<PORT_WARRIOR_SESSION_MAX && (result=line_read(f,storage[n],sizeof(storage[n])))==1){roots[n]=storage[n];n++;}
+    if(result<0 || (n==PORT_WARRIOR_SESSION_MAX && line_read(f,extra,sizeof(extra))!=0))good=0;
+    fclose(f);
+    if(!good || !n || !PortWarriors_Session(roots,n)){failure("Invalid session runtime fixture");return;}
+    fprintf(stderr,"warrior session test: registered=%d first_character=%d\n",n,PORT_WARRIOR_SESSION_FIRST);
+}
 static int warrior_path(char *out,unsigned size,const WarriorFiles *w,const char *file) {
     int n=w->previewRoot[0]?snprintf(out,size,"%s/%s/%s",Port_FileRoot(),w->previewRoot,file):
         snprintf(out,size,"%s/mods/%s/%s",Port_FileRoot(),w->folder,file);
@@ -251,10 +272,69 @@ static void init(void) {
             warriors[w].formTarget[slot]=target;
         }
     }
+    test_session();
     if(error[0])fprintf(stderr,"warriors: resource registration failed: %s\n",error);
 }
+int PortWarriors_SessionActive(void) {return sessionActive;}
+unsigned PortWarriors_SessionEpoch(void) {return sessionEpoch;}
+int PortWarriors_Session(const char *const *roots,int total) {
+    WarriorFiles *next;char savedError[sizeof(error)];int savedCount,i,j,k,good=1;
+    init();
+    if(total==0) {
+        if(sessionActive) {
+            memcpy(warriors,sessionSaved,sizeof(warriors));count=sessionSavedCount;
+            memset(sessionSaved,0,sizeof(sessionSaved));sessionActive=0;
+        }
+        return 1;
+    }
+    if(!roots || total<0 || total>PORT_WARRIOR_SESSION_MAX || previewActive || error[0])return 0;
+    next=calloc((size_t)total,sizeof(*next));if(!next)return 0;
+    savedCount=count;memcpy(savedError,error,sizeof(error));
+    for(i=0;i<total && good;i++) {
+        const char *leaf;
+        if(!roots[i] || strncmp(roots[i],".warrior-sessions/",18) || !safe_relative(roots[i],1) ||
+           strlen(roots[i])>=sizeof(next[i].previewRoot)) {good=0;break;}
+        leaf=strrchr(roots[i],'/');
+        if(!leaf || !leaf[1] || strlen(leaf+1)>=sizeof(next[i].folder)) {good=0;break;}
+        for(j=0;j<i;j++)if(same_name(next[j].folder,leaf+1))break;
+        if(j<i) {good=0;break;}
+        snprintf(next[i].previewRoot,sizeof(next[i].previewRoot),"%s",roots[i]);
+        snprintf(next[i].folder,sizeof(next[i].folder),"%s",leaf+1);
+        if(!load_files(&next[i]) || !load_identity(&next[i]))good=0;
+    }
+    for(i=0;i<total && good;i++)for(j=0;j<4;j++)if(next[i].formFolder[j][0]) {
+        for(k=0;k<total;k++)if(!strcmp(next[i].formFolder[j],next[k].folder))break;
+        if(k==total){good=0;break;}next[i].formTarget[j]=k;
+    }
+    count=savedCount;memcpy(error,savedError,sizeof(error));
+    if(good) {
+        if(!sessionActive){memcpy(sessionSaved,warriors,sizeof(warriors));sessionSavedCount=count;if(!++sessionEpoch)sessionEpoch=1;}
+        memset(warriors,0,sizeof(warriors));memcpy(warriors,next,(size_t)total*sizeof(*next));
+        count=total;sessionActive=1;
+    }
+    free(next);return good;
+}
 int PortWarriors_Count(void) {init();return count;}
+int PortWarriors_LocalCount(void) {
+    int n;init();if(previewActive || (!sessionActive && error[0]))return 0;
+    n=sessionActive?sessionSavedCount:count;return n>=0 && n<=PORT_WARRIOR_PLAYABLE_MAX?n:0;
+}
+int PortWarriors_LocalCopy(int index,PortWarriorLocal *out) {
+    const WarriorFiles *w;int total=PortWarriors_LocalCount(),role;
+    if(!out || index<0 || index>=total)return 0;
+    w=sessionActive?&sessionSaved[index]:&warriors[index];memset(out,0,sizeof(*out));
+    memcpy(out->name,w->name,sizeof(out->name));memcpy(out->style,w->templateName,sizeof(out->style));
+    memcpy(out->voice,w->voiceName,sizeof(out->voice));memcpy(out->attack,w->attackName,sizeof(out->attack));
+    out->aura=w->auraColour;out->rules=w->bt4Rules;
+    memcpy(out->target,w->formTarget,sizeof(out->target));memcpy(out->field,w->formFields,sizeof(out->field));
+    for(role=0;role<PORT_WARRIOR_FILE_ROLES;role++) {
+        const char *file=role==PORT_WARRIOR_CHIP?"chip.bin":w->resource[role];
+        if(file[0] && !warrior_path(out->file[role],sizeof(out->file[role]),w,file))return 0;
+    }
+    return 1;
+}
 void PortWarriors_Reload(void) {
+    if(sessionActive)return; /* Received room data never changes the local library. */
     previewActive=0;
     memset(warriors,0,sizeof(warriors));memset(error,0,sizeof(error));
     count=0;initialized=0;init();
@@ -284,36 +364,41 @@ int PortWarriors_ModelRole(int outfit,int damaged) {
     static const int damage[4]={PORT_WARRIOR_DAMAGE_1,PORT_WARRIOR_DAMAGE_2,PORT_WARRIOR_DAMAGE_3,PORT_WARRIOR_DAMAGE_4};
     return outfit>=0 && outfit<4?(damaged?damage:models)[outfit]:-1;
 }
-int PortWarriors_Costumes(int index) {init();return index>=0 && index<count?warriors[index].costumes:0;}
+static const WarriorFiles *lookup(int index) {
+    init();
+    if(index>=PORT_WARRIOR_LOCAL_KEY && index<PORT_WARRIOR_LOCAL_KEY+PortWarriors_LocalCount())
+        return sessionActive?&sessionSaved[index-PORT_WARRIOR_LOCAL_KEY]:&warriors[index-PORT_WARRIOR_LOCAL_KEY];
+    return index>=0 && index<count?&warriors[index]:NULL;
+}
+int PortWarriors_Costumes(int index) {const WarriorFiles *w=lookup(index);return w?w->costumes:0;}
 const char *PortWarriors_Error(void) {init();return error[0]?error:NULL;}
 const char *PortWarriors_Folder(int index) {
-    init();return index>=0 && index<count?warriors[index].folder:NULL;
+    const WarriorFiles *w=lookup(index);return w?w->folder:NULL;
 }
 const char *PortWarriors_Name(int index) {
-    init();return index>=0 && index<count?warriors[index].name:NULL;
+    const WarriorFiles *w=lookup(index);return w?w->name:NULL;
 }
 const char *PortWarriors_AttackName(int index,int slot) {
-    init();
-    return index>=0 && index<count && slot>=0 && slot<5 && warriors[index].attackName[slot][0]?warriors[index].attackName[slot]:NULL;
+    const WarriorFiles *w=lookup(index);
+    return w && slot>=0 && slot<5 && w->attackName[slot][0]?w->attackName[slot]:NULL;
 }
 int PortWarriors_AuraColour(int index) {
-    init();return index>=0 && index<count?warriors[index].auraColour:-1;
+    const WarriorFiles *w=lookup(index);return w?w->auraColour:-1;
 }
 int PortWarriors_UsesBT4Rules(int index) {
-    init();return index>=0 && index<count?warriors[index].bt4Rules:0;
+    const WarriorFiles *w=lookup(index);return w?w->bt4Rules:0;
 }
 const char *PortWarriors_TemplateName(int index) {
-    init();return index>=0 && index<count?warriors[index].templateName:NULL;
+    const WarriorFiles *w=lookup(index);return w?w->templateName:NULL;
 }
 const char *PortWarriors_VoiceName(int index) {
-    init();return index>=0 && index<count?warriors[index].voiceName:NULL;
+    const WarriorFiles *w=lookup(index);return w?w->voiceName:NULL;
 }
 int PortWarriors_FormTarget(int index,int form) {
-    init();return index>=0 && index<count && form>=0 && form<4?warriors[index].formTarget[form]:-1;
+    const WarriorFiles *w=lookup(index);return w && form>=0 && form<4?w->formTarget[form]:-1;
 }
 int PortWarriors_FormField(int index,int form,int field) {
-    init();return index>=0 && index<count && form>=0 && form<4 && field>=0 && field<5?
-        warriors[index].formFields[form][field]:0;
+    const WarriorFiles *w=lookup(index);return w && form>=0 && form<4 && field>=0 && field<5?w->formFields[form][field]:0;
 }
 void PortWarriors_TraceNode(int character,int node,int active,const void *matrix) {
     static unsigned char seen[PORT_WARRIOR_PLAYABLE_MAX][169];
@@ -326,6 +411,7 @@ void PortWarriors_TraceNode(int character,int node,int active,const void *matrix
 }
 int PortWarriors_Alias(const char *relative,char *out,unsigned size) {
     unsigned warrior,resource,flat;int length=0,written;
+    const WarriorFiles *w;
     if(strncmp(relative,"zwarriors/",10))return 0;
     if(out && size)out[0]=0;
     init();
@@ -335,9 +421,9 @@ int PortWarriors_Alias(const char *relative,char *out,unsigned size) {
         if(sscanf(relative,"zwarriors/%u.bin%n",&flat,&length)!=1 || !length || relative[length])return -1;
         warrior=flat/PORT_WARRIOR_FILE_STRIDE;resource=flat%PORT_WARRIOR_FILE_STRIDE;
     }
-    if(warrior>=(unsigned)count || resource>=PORT_WARRIOR_FILE_ROLES)return -1;
-    if(resource!=PORT_WARRIOR_CHIP && !warriors[warrior].resource[resource][0])return -1;
-    written=warrior_path(out,size,&warriors[warrior],resource==PORT_WARRIOR_CHIP?"chip.bin":warriors[warrior].resource[resource]);
+    if(warrior>PORT_WARRIOR_LOCAL_KEY+PORT_WARRIOR_PLAYABLE_MAX || resource>=PORT_WARRIOR_FILE_ROLES || !(w=lookup((int)warrior)))return -1;
+    if(resource!=PORT_WARRIOR_CHIP && !w->resource[resource][0])return -1;
+    written=warrior_path(out,size,w,resource==PORT_WARRIOR_CHIP?"chip.bin":w->resource[resource]);
     if(!written) {out[0]=0;return -1;}
     if(resource==PORT_WARRIOR_CHIP) {
         FILE *f=fopen(out,"rb");

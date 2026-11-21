@@ -363,19 +363,31 @@ extern "C" int PortZwNative_Write(int field,uint32_t value) {
     if(zwFields[field].kind==ZW_RGB && !v.empty() && (v.size()!=6 || v.find_first_not_of("0123456789abcdefABCDEF")!=std::string::npos))return 0;
     return patch_choice(e->edited,field,v);
 }
-extern "C" int PortZwNative_New(int copyForm) {
+static int new_warrior(int copyForm,bool linkForm) {
     auto &l=library;if(l.process)return -1;
     if(l.entries.size()>=4){l.status="The current prototype supports four custom forms at a time.";return -1;}
     Draft entry;
     if(copyForm>=0 && copyForm<int(l.entries.size())) {
         entry.edited=l.entries[copyForm].edited;entry.source=l.entries[copyForm].source;
         for(int field=ZW_FORM1;field<=ZW_FORM4;field++)patch_field(entry.edited,zwFields[field].key,"");
-        patch_field(entry.edited,"name",entry.edited.get("name").substr(0,165)+" (Form)");
-        patch_field(entry.edited,"form1","1,0,"+l.entries[copyForm].folder);
+        if(linkForm) {
+            patch_field(entry.edited,"name",entry.edited.get("name").substr(0,165)+" (Form)");
+            patch_field(entry.edited,"form1","1,0,"+l.entries[copyForm].folder);
+        }else {
+            auto base=entry.edited.get("name");
+            if(base.size()>165){base.resize(165);while(!base.empty() && (static_cast<unsigned char>(base.back())&0xc0)==0x80)base.pop_back();
+                if(!base.empty() && static_cast<unsigned char>(base.back())>=0xc0)base.pop_back();}
+            std::string candidate=base+" Copy";int suffix=2;
+            for(;;) {
+                bool exists=false;for(auto &e:l.entries)if(e.edited.get("name")==candidate){exists=true;break;}
+                if(!exists)break;candidate=base+" Copy "+std::to_string(suffix++);
+            }
+            patch_field(entry.edited,"name",candidate);
+        }
     }else entry.edited.raw="name=New Warrior\ntitle=Z Warrior\nbody=Goku (End)\nmoves=Goku (End)\nvoice=Goku (End)\nstyle=Goku (End)\n";
     entry.folder="Warrior - Custom "+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     entry.fresh=true;l.entries.push_back(std::move(entry));int added=int(l.entries.size())-1;
-    if(copyForm>=0 && copyForm<added) {
+    if(linkForm && copyForm>=0 && copyForm<added) {
         auto &base=l.entries[copyForm];bool linked=false;
         for(int field=ZW_FORM1;field<=ZW_FORM4;field++)if(base.edited.get(zwFields[field].key).empty()) {
             patch_field(base.edited,zwFields[field].key,"1,0,"+l.entries[added].folder);linked=true;break;
@@ -383,6 +395,11 @@ extern "C" int PortZwNative_New(int copyForm) {
         if(!linked){l.entries.pop_back();l.status="This warrior already has four transformation links.";return -1;}
     }
     l.selected=added;return added;
+}
+extern "C" int PortZwNative_New(int copyForm){return new_warrior(copyForm,true);}
+extern "C" int PortZwNative_Duplicate(int source) {
+    if(source<0 || source>=int(library.entries.size()))return -1;
+    return new_warrior(source,false);
 }
 static std::string native_source(const Document &document,const char *key) {
     auto value=document.get(key);
