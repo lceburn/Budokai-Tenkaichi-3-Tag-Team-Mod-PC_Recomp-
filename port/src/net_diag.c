@@ -4,8 +4,8 @@
 #include "port_host.h"
 #include <stdlib.h>
 #include <string.h>
-typedef struct {uint64_t caller,before,after;unsigned count;int kind,phase,view;} RngSite;
-typedef struct {uint64_t seq,caller,before,after;unsigned frame,branch,ordinal,result;int kind,phase,view;} RngEvent;
+typedef struct {uint64_t caller,before,after;unsigned count;int kind,phase,view,actor;} RngSite;
+typedef struct {uint64_t seq,caller,before,after;unsigned frame,branch,ordinal,result;int kind,phase,view,actor;} RngEvent;
 typedef struct {
     unsigned stamp,valid,rewind,mask,confirmed,checked,rollbacks;
     unsigned present,words[ND_ACTORS],headerWords,rngWords,lobbyWords,mtWords,extraWords;
@@ -16,6 +16,8 @@ typedef struct {
     unsigned rngCount[NR_KIND_COUNT],siteCount,siteOverflow;
     uint64_t firstEvent,lastEvent;
     RngSite sites[ND_RNG_SITES];
+    unsigned aiPresent[ND_AI_STAGES];
+    uint32_t ai[ND_AI_STAGES][ND_ACTORS][ND_AI_WORDS];
 } Snapshot;
 PORT_HOST static Snapshot history[ND_HISTORY];
 PORT_HOST static Snapshot *current;
@@ -24,10 +26,18 @@ PORT_HOST static int enabled=-1;
 PORT_HOST static RngEvent rngEvents[ND_RNG_EVENTS],seedEvents[32];
 PORT_HOST static uint64_t rngSequence;
 PORT_HOST static unsigned seedCount;
-PORT_HOST static int rngPhase,rngView=-1,initialValid;
+PORT_HOST static int rngPhase,rngView=-1,rngActor=-1,initialValid;
 PORT_HOST static Snapshot initial;
 int ND_Phase(int phase){int old=rngPhase;rngPhase=phase;return old;}
 void ND_View(int view){rngView=view;}
+int ND_AiActive(void){return ND_Enabled()&&!captured&&current&&current->valid;}
+void ND_Ai(int actor,int stage,const unsigned *data,unsigned count) {
+    rngActor=actor;
+    if(!ND_Enabled()||captured||!current||!current->valid||actor<0||actor>=ND_ACTORS||
+       stage<0||stage>=ND_AI_STAGES||!data||count!=ND_AI_WORDS)return;
+    memcpy(current->ai[stage][actor],data,ND_AI_WORDS*sizeof(uint32_t));
+    current->aiPresent[stage]|=1u<<actor;
+}
 void ND_Rng(int kind,unsigned long long before,unsigned long long after,unsigned long long caller,unsigned result) {
     RngEvent *e;unsigned i;RngSite *site=NULL;
     if(kind<=0||kind>=NR_KIND_COUNT)return;
@@ -35,18 +45,18 @@ void ND_Rng(int kind,unsigned long long before,unsigned long long after,unsigned
     if(!ND_Enabled()||captured)return;
     if(!current||!current->valid) {
         if((kind==NR_LIBC_SEED||kind==NR_VU0_SEED)&&seedCount<32) {
-            e=&seedEvents[seedCount++];*e=(RngEvent){0,caller,before,after,0,branches,0,result,kind,rngPhase,rngView};
+            e=&seedEvents[seedCount++];*e=(RngEvent){0,caller,before,after,0,branches,0,result,kind,rngPhase,rngView,rngActor};
         }
         return;
     }
     e=&rngEvents[rngSequence%ND_RNG_EVENTS];
-    *e=(RngEvent){++rngSequence,caller,before,after,current->stamp,branches,++current->rngCount[kind],result,kind,rngPhase,rngView};
+    *e=(RngEvent){++rngSequence,caller,before,after,current->stamp,branches,++current->rngCount[kind],result,kind,rngPhase,rngView,rngActor};
     if(!current->firstEvent)current->firstEvent=e->seq;current->lastEvent=e->seq;
     for(i=0;i<current->siteCount;i++) {
         RngSite *s=&current->sites[i];
-        if(s->kind==kind&&s->caller==caller&&s->phase==rngPhase&&s->view==rngView){site=s;break;}
+        if(s->kind==kind&&s->caller==caller&&s->phase==rngPhase&&s->view==rngView&&s->actor==rngActor){site=s;break;}
     }
-    if(!site&&current->siteCount<ND_RNG_SITES){site=&current->sites[current->siteCount++];*site=(RngSite){caller,before,after,0,kind,rngPhase,rngView};}
+    if(!site&&current->siteCount<ND_RNG_SITES){site=&current->sites[current->siteCount++];*site=(RngSite){caller,before,after,0,kind,rngPhase,rngView,rngActor};}
     if(site){site->after=after;site->count++;}else current->siteOverflow++;
 }
 int ND_Enabled(void) {
@@ -60,7 +70,7 @@ void ND_Reset(unsigned round) {
     if(!ND_Enabled())return;
     memset(history,0,sizeof(history));current=NULL;roundNumber=round;
     lastFrame=haveFrame=captured=branches=0;
-    rngSequence=seedCount=initialValid=0;rngPhase=NP_IDLE;rngView=-1;
+    rngSequence=seedCount=initialValid=0;rngPhase=NP_IDLE;rngView=rngActor=-1;
 }
 void ND_Begin(unsigned frame,int rewind,unsigned mask,unsigned confirmed,unsigned checked,unsigned rollbacks) {
     if(!ND_Enabled()||captured)return;
@@ -72,7 +82,7 @@ void ND_Begin(unsigned frame,int rewind,unsigned mask,unsigned confirmed,unsigne
     current=&history[frame%ND_HISTORY];memset(current,0,sizeof(*current));
     current->stamp=frame;current->valid=1;current->rewind=rewind;current->mask=mask;
     current->confirmed=confirmed;current->checked=checked;current->rollbacks=rollbacks;
-    lastFrame=frame;haveFrame=1;
+    lastFrame=frame;haveFrame=1;rngActor=-1;
 }
 static unsigned copy_words(uint32_t *out,unsigned capacity,const void *p,unsigned bytes) {
     unsigned n=bytes/4;if(n>capacity)n=capacity;if(p&&n)memcpy(out,p,n*4);return n;
@@ -113,6 +123,7 @@ int ND_Dump(unsigned at,uint64_t local,uint64_t remote,uint64_t build,uint64_t d
     f=fopen(path,"w");if(!f){fprintf(stderr,"net diagnostic: could not write net-desync.txt\n");return 0;}
     fprintf(f,"net-desync-v3 build=%016llx data=%016llx round=%u host=%d role=%d peer_role=%d mismatch_frame=%u current_frame=%u branches=%u local=%016llx remote=%016llx\n",(unsigned long long)build,(unsigned long long)data,roundNumber,host,role,peer,at,lastFrame,branches,(unsigned long long)local,(unsigned long long)remote);
     fprintf(f,"schema actor words: chara costume hp maxHp ki blast action target player lockedOff clash fused controller next seconds swap revive helper assist power team posX posY posZ posW rotX rotY rotZ rotW; floats are raw IEEE bits. header: actorCount sequenceState clock reserved teamCount winningTeam. Legacy four-word headers omit teamCount/winningTeam and legacy 28-word actors omit team. extra_rng: mtIndex sceneRand fighterRand vu0R. mt: 624 state words. rng: libc64 low/high. lobby: fingerprint low/high. States are at tick entry BEFORE that tick's inputs. Missing records and masks mean unavailable, not zero.\n");
+    fprintf(f,"ai_schema stages=0:enter,1:sensed,2:thought,3:sent words=objId,target,type,level,managerFrame,dist,radiusSum,sight,seqFlags,depth,phase,step,timer,ruleSet,topId,statusLo,statusHi,react,oppClass,oppAction,seqHash,statusHash,moveHash,planHash,outHash,timer18,timer1C,timer20,buttons,stickX,stickY,ruleNo; hashes cover pointer-free AI blocks and floats are raw IEEE bits. AI observations occur AFTER tick entry, before/after each CPU pass.\n");
     if(context)context(f);
     fprintf(f,"rng_schema kinds=1:libc-next,2:libc-seed,3:vu0-float01,4:vu0-seed,5:mt-next,6:libc-wrapper,7:libc-range,8:vu0-range,9:mt-range phases=0:idle,1:net-tick,2:setup,3:audio,4:ai-input,5:fighters,6:effects-update,7:loaders,8:stage-update,9:camera,10:visibility,11:mechanics,12:view-prep,13:draw-world,14:draw-fighters,15:draw-effects,16:hud,17:overlay,18:frame-end. Events belong to the interval AFTER tick entry. Wrapper kinds describe callers and are not extra generator advances. Site overflow and overwritten events are explicit.\n");
     fprintf(f,"rng_storage event_capacity=%u site_capacity_per_tick=%u bytes=%llu\n",ND_RNG_EVENTS,ND_RNG_SITES,(unsigned long long)(sizeof(history)+sizeof(rngEvents)+sizeof(initial)+sizeof(seedEvents)));
@@ -132,12 +143,16 @@ int ND_Dump(unsigned at,uint64_t local,uint64_t remote,uint64_t build,uint64_t d
             for(j=0;j<ND_PAD_BYTES;j++)fprintf(f,"%02x",s->actual[p][j]);fputc('\n',f);
         }
         fprintf(f,"rng_counts frame=%u overflow=%u",t,s->siteOverflow);for(i=1;i<NR_KIND_COUNT;i++)fprintf(f," k%u=%u",i,s->rngCount[i]);fputc('\n',f);
-        for(i=0;i<s->siteCount;i++){RngSite *r=&s->sites[i];fprintf(f,"rng_site frame=%u kind=%d phase=%d view=%d caller=%016llx count=%u before=%016llx after=%016llx\n",t,r->kind,r->phase,r->view,(unsigned long long)r->caller,r->count,(unsigned long long)r->before,(unsigned long long)r->after);}
+        for(p=0;p<ND_AI_STAGES;p++)for(i=0;i<ND_ACTORS;i++)if(s->aiPresent[p]&(1u<<i)) {
+            fprintf(f,"ai actor=%u stage=%u",i,p);
+            for(j=0;j<ND_AI_WORDS;j++)fprintf(f," %08x",s->ai[p][i][j]);fputc('\n',f);
+        }
+        for(i=0;i<s->siteCount;i++){RngSite *r=&s->sites[i];fprintf(f,"rng_site frame=%u kind=%d phase=%d view=%d actor=%d caller=%016llx count=%u before=%016llx after=%016llx\n",t,r->kind,r->phase,r->view,r->actor,(unsigned long long)r->caller,r->count,(unsigned long long)r->before,(unsigned long long)r->after);}
         if(t>=(at>32?at-32:0)&&t<=at+8&&s->firstEvent) {
             uint64_t q,first=s->firstEvent,retained=rngSequence>=ND_RNG_EVENTS?rngSequence-ND_RNG_EVENTS+1:1;
             if(first<retained)first=retained;
             fprintf(f,"rng_coverage frame=%u first_seq=%llu last_seq=%llu overwritten=%llu\n",t,(unsigned long long)s->firstEvent,(unsigned long long)s->lastEvent,(unsigned long long)(first>s->firstEvent?((first>s->lastEvent+1?s->lastEvent+1:first)-s->firstEvent):0));
-            for(q=first;q<=s->lastEvent;q++){RngEvent *r=&rngEvents[(q-1)%ND_RNG_EVENTS];if(r->seq!=q||r->frame!=t)continue;fprintf(f,"rng_event frame=%u seq=%llu branch=%u kind=%d ordinal=%u phase=%d view=%d caller=%016llx before=%016llx after=%016llx result=%08x\n",t,(unsigned long long)q,r->branch,r->kind,r->ordinal,r->phase,r->view,(unsigned long long)r->caller,(unsigned long long)r->before,(unsigned long long)r->after,r->result);}
+            for(q=first;q<=s->lastEvent;q++){RngEvent *r=&rngEvents[(q-1)%ND_RNG_EVENTS];if(r->seq!=q||r->frame!=t)continue;fprintf(f,"rng_event frame=%u seq=%llu branch=%u kind=%d ordinal=%u phase=%d view=%d actor=%d caller=%016llx before=%016llx after=%016llx result=%08x\n",t,(unsigned long long)q,r->branch,r->kind,r->ordinal,r->phase,r->view,r->actor,(unsigned long long)r->caller,(unsigned long long)r->before,(unsigned long long)r->after,r->result);}
         }
         if(t==~0u)break;
     }

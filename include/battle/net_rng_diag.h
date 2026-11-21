@@ -10,6 +10,9 @@ enum { NP_IDLE,NP_NET_TICK,NP_SETUP,NP_AUDIO,NP_AI_INPUT,NP_FIGHTERS,
 void ND_Rng(int,unsigned long long,unsigned long long,unsigned long long,unsigned);
 int ND_Phase(int);
 void ND_View(int);
+/* Bounded, host-only AI observation: stages enter, sensed, thought, sent. */
+void ND_Ai(int actor,int stage,const unsigned *words,unsigned count);
+int ND_AiActive(void);
 #ifdef PORT
 #define NR_PHASE(p) ((void)ND_Phase(p))
 #define NR_VIEW(v) ND_View(v)

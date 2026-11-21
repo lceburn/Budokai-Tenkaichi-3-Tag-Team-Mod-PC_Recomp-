@@ -24,6 +24,19 @@ def main():
         b['frames'][10]['rng_events'][0].update(view='1',branch='2',seq='17')
         assert compare(a,b)['first_rng_event_difference'] is None
         assert compare(a,b)['first_rng_caller_difference'] is None
+        assert not compare(a,b)['ai_capture_available']
+        a['frames'][10]['ai']={(3,0):[0]*32}
+        b['frames'][10]['ai']={(3,0):[0]*32}
+        b['frames'][10]['ai'][3,0][21]=123
+        delta=compare(a,b)['first_ai_difference']
+        assert delta['actor']==3 and delta['stage']==0 and delta['differences'][0]['field']=='statusHash'
+        b['frames'][10]['ai'].clear()
+        assert compare(a,b)['first_ai_difference']['component']=='missing-ai-pass'
+        a['frames'][10]['ai'].clear()
+        a['frames'][10]['rng_events'].append(dict(kind='9',phase='4',caller='20010005',before='1',after='2',result='2f'))
+        b['frames'][10]['rng_events'].append(dict(kind='9',phase='4',caller='20010005',before='1',after='2',result='61'))
+        assert compare(a,b)['first_rng_event_difference'] is None
+        assert compare(a,b)['first_ai_random_result_difference']['frame']==10
         b['frames'][10]['rng_counts']['k1']='2'
         b['frames'][10]['rng_sites'][0]['count']='2'
         b['frames'][10]['rng_events'][0]['caller']='0000000020010010'

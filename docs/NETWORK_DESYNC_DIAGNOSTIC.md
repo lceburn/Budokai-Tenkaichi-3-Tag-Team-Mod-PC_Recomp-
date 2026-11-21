@@ -54,6 +54,30 @@ The code reads state without invoking RNG generators, writing simulation structu
 
 ## Comparing paired reports
 
+### AI decision observations (Beta 20 experimental)
+
+The bounded capture can now retain four observations per active CPU fighter:
+entry after sight calculation, after sensing, after rule evaluation, and after
+sending its input. These are `ai actor=... stage=...` records, accompanied by an
+`ai_schema` line. They include the target, type and level, shared sight and
+distance, sequence and reaction state, output, and hashes of pointer-free AI
+work blocks. Missing observations mean unavailable or not run, not zero.
+The observations occur after the tick-entry fighter snapshot. A hash difference
+locates a differing block; it does not by itself prove which field caused it.
+
+RNG events and caller aggregates also record the CPU actor while its pass runs.
+The caller table is bounded at 128 entries per tick; overflow remains explicit.
+The complete diagnostic recorder remains below 16 MiB. No AI observation is
+sent over the network, included in the wire checksum, or restored as game state.
+Disabled diagnostics skip the AI hashing entirely.
+
+The comparison tool separately reports the first differing AI `Rand_Range`
+result. Identical raw generator output can produce different decisions when
+the AI chooses a different bound, before generator call counts diverge.
+Earlier reports without AI observations remain readable, with
+`ai_capture_available` false. That absence cannot establish that internal AI
+state matched.
+
 The repository includes an offline comparison tool; testers do not need Python to generate reports:
 
 ```powershell

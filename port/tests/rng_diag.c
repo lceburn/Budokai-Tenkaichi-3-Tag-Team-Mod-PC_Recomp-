@@ -16,8 +16,14 @@ static unsigned fbits(float f){unsigned u;memcpy(&u,&f,4);return u;}
 unsigned RefVu0_SubBits(unsigned a,unsigned b){float x,y;memcpy(&x,&a,4);memcpy(&y,&b,4);return fbits(x-y);}
 unsigned RefVu0_MulBits(unsigned a,unsigned b){float x,y;memcpy(&x,&a,4);memcpy(&y,&b,4);return fbits(x*y);}
 int main(void) {
-    unsigned i,seed;uint64_t saved;
+    unsigned i,seed,ai[ND_AI_WORDS]={0};uint64_t saved;
     enabled=1;ND_Reset(5);ND_Begin(100,0,3,98,97,0);ND_End(0);ND_Phase(NP_EFFECTS_UPDATE);ND_View(2);
+    assert(ND_AiActive());ai[0]=3;ai[15]=0x4000;
+    ND_Ai(3,1,ai,ND_AI_WORDS);ai[15]=0;
+    assert(current->aiPresent[1]==8 && current->ai[1][3][15]==0x4000);
+    ND_Ai(-1,0,ai,ND_AI_WORDS);ND_Ai(ND_ACTORS,0,ai,ND_AI_WORDS);
+    ND_Ai(3,ND_AI_STAGES,ai,ND_AI_WORDS);ND_Ai(3,0,ai,ND_AI_WORDS-1);
+    assert(!current->aiPresent[0]);ND_Ai(-1,-1,NULL,0);
     for(seed=0;seed<4;seed++) {
         Port_Srand(seed*1234567u);baselineSrand(seed*1234567u);
         for(i=0;i<1000;i++){assert(Port_Rand()==baselineRand());assert(gPortRandNext==baselineLibc);}
@@ -36,12 +42,14 @@ int main(void) {
     ND_Begin(101,0,3,99,98,0);ND_Rng(NR_LIBC_NEXT,1,2,0x20123456,3);
     ND_Begin(100,1,3,99,98,1);assert(!history[101%512].valid&&!current->firstEvent);
     ND_Phase(NP_CAMERA);ND_View(3);
-    for(i=0;i<ND_RNG_EVENTS+100;i++)ND_Rng(NR_LIBC_NEXT,i,i+1,0x20001000+(i%80),i);
+    ND_Ai(3,0,ai,ND_AI_WORDS);
+    for(i=0;i<ND_RNG_EVENTS+100;i++)ND_Rng(NR_LIBC_NEXT,i,i+1,0x20001000+(i%(ND_RNG_SITES+16)),i);
     assert(current->rngCount[NR_LIBC_NEXT]==ND_RNG_EVENTS+100 && current->siteOverflow);
+    assert(current->sites[0].actor==3 && rngEvents[(rngSequence-1)%ND_RNG_EVENTS].actor==3);
     assert(ND_Dump(100,0,0,1,2,1,0,1,NULL));
     saved=gPortRandNext;ND_Rng(NR_LIBC_SEED,1,2,3,4);assert(gPortRandNext==saved);
     assert(sizeof(history)+sizeof(rngEvents)+sizeof(initial)+sizeof(seedEvents)<16u*1024u*1024u);
-    ND_Reset(6);assert(!initialValid&&!rngSequence&&!seedCount);
+    ND_Reset(6);assert(!initialValid&&!rngSequence&&!seedCount&&!ND_AiActive()&&rngActor==-1);
     enabled=0;Port_Srand(1);baselineSrand(1);for(i=0;i<50;i++)assert(Port_Rand()==baselineRand());assert(!rngSequence);
     puts("PASS: production libc/VU0/MT outputs and states match pre-trace baseline; wrappers, phases/views, replay invalidation, ring/site overflow, reset, opt-out and fixed memory.");
     return 0;

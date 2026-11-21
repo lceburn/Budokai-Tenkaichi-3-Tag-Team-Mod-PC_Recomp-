@@ -9,6 +9,7 @@ import zipfile
 
 FIELDS=('chara costume hp maxHp ki blast action target player lockedOff clash fused controller next seconds swap revive helper assist power posX posY posZ posW rotX rotY rotZ rotW').split()
 TEAM_FIELDS=FIELDS[:20]+['team']+FIELDS[20:]
+AI_FIELDS=('objId target type level managerFrame dist radiusSum sight seqFlags depth phase step timer ruleSet topId statusLo statusHi react oppClass oppAction seqHash statusHash moveHash planHash outHash timer18 timer1C timer20 buttons stickX stickY ruleNo').split()
 
 
 def pairs(line):
@@ -27,7 +28,7 @@ def read(path):
         elif line.startswith(('config ','roster=','options')):result['config'].append(line)
         elif line.startswith('frame='):
             if 'unavailable' in line:frame=None;continue
-            frame={'meta':pairs(line),'actors':{},'inputs':{},'rng_sites':[],'rng_events':[]}
+            frame={'meta':pairs(line),'actors':{},'inputs':{},'rng_sites':[],'rng_events':[],'ai':{}}
             result['frames'][int(frame['meta']['frame'])]=frame
         elif frame is not None:
             if line.startswith('actor='):
@@ -37,6 +38,9 @@ def read(path):
             elif line.startswith('rng_event '):frame['rng_events'].append(pairs(line))
             elif line.startswith('rng_counts '):frame['rng_counts']=pairs(line)
             elif line.startswith('rng_coverage '):frame['rng_coverage']=pairs(line)
+            elif line.startswith('ai actor='):
+                parts=line.split();key=pairs(line)
+                frame['ai'][int(key['actor']),int(key['stage'])]=[int(w,16) for w in parts[3:]]
             else:
                 parts=line.split()
                 if parts and parts[0] in ('header','rng','lobby','mt','extra_rng'):frame[parts[0]]=[int(w,16) for w in parts[1:]]
@@ -63,7 +67,10 @@ def compare(a,b,symbols=None):
             'paired_checksums':a['meta'].get('local')==b['meta'].get('remote') and b['meta'].get('local')==a['meta'].get('remote'),
             'capture_hash_errors':[], 'first_state_difference':None,'first_extra_rng_difference':None,'first_input_difference':None,
             'initial_rng_difference':[k for k in a.get('initial',{}) if a['initial'].get(k)!=b.get('initial',{}).get(k)],
-            'first_rng_count_difference':None,'first_rng_caller_difference':None,'first_rng_event_difference':None}
+            'first_rng_count_difference':None,'first_rng_caller_difference':None,'first_rng_event_difference':None,
+            'first_ai_random_result_difference':None,
+            'ai_capture_available':any(f.get('ai') for f in a['frames'].values()) and any(f.get('ai') for f in b['frames'].values()),
+            'first_ai_difference':None}
     if not result['metadata_match']:
         result.update(common_frames=0,note='Captures differ in build, data, round or mismatch frame. Pair reports from the same event before comparing states.')
         return result
@@ -76,6 +83,29 @@ def compare(a,b,symbols=None):
     for tick in common:
         x,y=a['frames'][tick],b['frames'][tick]
         if tick<complete:
+            if result['first_ai_random_result_difference'] is None and not any(int(z.get('rng_coverage',{}).get('overwritten','0')) for z in (x,y)):
+                # Equal generator advances do not imply equal AI decisions:
+                # Rand_Range can apply different bounds to the same raw draw.
+                ex=[e for e in x['rng_events'] if e['kind']=='9' and e['phase']=='4']
+                ey=[e for e in y['rng_events'] if e['kind']=='9' and e['phase']=='4']
+                for n,(u,v) in enumerate(zip(ex,ey)):
+                    if any(u.get(k)!=v.get(k) for k in ('caller','before','after','result','actor')):
+                        item={'frame':tick,'index':n,'first':u,'second':v}
+                        if symbols:
+                            item['first_symbol']=resolve(symbols,int(u['caller'],16))
+                            item['second_symbol']=resolve(symbols,int(v['caller'],16))
+                        result['first_ai_random_result_difference']=item;break
+            if result['first_ai_difference'] is None:
+                # Actor processing order is deterministic; stages are within
+                # that actor's pass, after the frame-entry state observation.
+                for actor,stage in sorted(x.get('ai',{}).keys()|y.get('ai',{}).keys()):
+                    left=x.get('ai',{}).get((actor,stage));right=y.get('ai',{}).get((actor,stage))
+                    if left is None or right is None:
+                        result['first_ai_difference']={'frame':tick,'actor':actor,'stage':stage,'component':'missing-ai-pass'};break
+                    changed=[{'field':AI_FIELDS[i] if i<len(AI_FIELDS) else str(i),'first_bits':u,'second_bits':v}
+                             for i,(u,v) in enumerate(zip(left,right)) if u!=v]
+                    if changed:
+                        result['first_ai_difference']={'frame':tick,'actor':actor,'stage':stage,'differences':changed};break
             cx,cy=x.get('rng_counts',{}),y.get('rng_counts',{})
             if result['first_rng_count_difference'] is None:
                 counts={k:{'first':cx.get(k),'second':cy.get(k)} for k in sorted(cx.keys()|cy.keys()) if k.startswith('k') and cx.get(k)!=cy.get(k)}
@@ -83,14 +113,14 @@ def compare(a,b,symbols=None):
             def sites(frame):
                 output={}
                 for s in frame['rng_sites']:
-                    key=(s['kind'],s['phase'],s['caller']);output[key]=output.get(key,0)+int(s['count'])
+                    key=(s['kind'],s['phase'],s['caller'],s.get('actor','-1'));output[key]=output.get(key,0)+int(s['count'])
                 return output
             sx,sy=sites(x),sites(y)
             if result['first_rng_caller_difference'] is None:
                 changed=[]
                 for key in sorted(sx.keys()|sy.keys()):
                     if sx.get(key,0)!=sy.get(key,0):
-                        item=dict(zip(('kind','phase','caller'),key));item.update(first_count=sx.get(key,0),second_count=sy.get(key,0))
+                        item=dict(zip(('kind','phase','caller','actor'),key));item.update(first_count=sx.get(key,0),second_count=sy.get(key,0))
                         if symbols:item['nearest_symbol']=resolve(symbols,int(key[2],16))
                         changed.append(item)
                 if changed:result['first_rng_caller_difference']={'frame':tick,'sites':changed,'site_overflow_first':cx.get('overflow'),'site_overflow_second':cy.get('overflow')}
@@ -102,7 +132,7 @@ def compare(a,b,symbols=None):
                     if not ex and not ey:continue
                     for n in range(max(len(ex),len(ey))):
                         u=ex[n] if n<len(ex) else None;v=ey[n] if n<len(ey) else None
-                        if u is None or v is None or any(u[k]!=v[k] for k in ('caller','phase','before','after','result')):
+                        if u is None or v is None or any(u.get(k)!=v.get(k) for k in ('caller','phase','before','after','result','actor')):
                             item={'frame':tick,'kind':kind,'index':n,'first':u,'second':v}
                             if symbols:
                                 item['first_symbol']=resolve(symbols,int(u['caller'],16)) if u else None

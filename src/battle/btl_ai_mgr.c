@@ -3,6 +3,7 @@
 #include "battle/battle.h"
 #include "battle/btl_seq.h"
 #include "battle/tag_lobby.h"
+#include "battle/net_rng_diag.h"
 #include "sys/heap.h"
 #include "sys/rand.h"
 
@@ -249,6 +250,31 @@ s32 BtlAiMgr_GetFrame(void) {
 }
 
 /* Frame entry: runs both sides' controllers while the fight is live. */
+#ifdef PORT
+/* No pointers or game writes: retain the hidden decision state separately from
+ * the wire digest so matched fighter positions cannot hide an earlier AI fork. */
+static u32 ai_diag_hash(const void *data,u32 size) {
+    const u8 *p=data;u32 h=2166136261u,i;
+    for(i=0;i<size;i++)h=(h^p[i])*16777619u;
+    return h;
+}
+static u32 ai_diag_float(f32 value) {u32 bits;memcpy(&bits,&value,4);return bits;}
+static void ai_diag(BtlAiWork *s,s32 stage) {
+    if(!ND_AiActive())return;
+    u32 w[32]={s->objId,TagTeam_Target(s->objId),s->type,s->level,gBtlAi->frame,
+        ai_diag_float(gBtlAi->dist),ai_diag_float(gBtlAi->radiusSum),gBtlAi->sight,
+        s->seq.flags,s->seq.depth,s->seq.phase,s->seq.step,s->seq.timer,s->seq.ruleSet,
+        s->seq.depth>0&&s->seq.depth<=8?s->seq.stack[s->seq.depth-1].id:~0u,
+        (u32)s->status.flags,(u32)(s->status.flags>>32),s->status.react,s->status.oppClass,s->status.oppAction,
+        ai_diag_hash(&s->seq,sizeof(s->seq)),ai_diag_hash(&s->status,sizeof(s->status)),
+        ai_diag_hash(&s->move,sizeof(s->move)),ai_diag_hash(&s->plan,sizeof(s->plan)),
+        ai_diag_hash(&s->out,sizeof(s->out)),s->status.timer18,s->status.timer1C,s->status.timer20,
+        s->out.buttons,ai_diag_float(s->out.stickX),ai_diag_float(s->out.stickY),s->plan.ruleNo};
+    ND_Ai(s->objId,stage,w,32);
+}
+#else
+#define ai_diag(s,stage) ((void)0)
+#endif
 void BtlAiMgr_Update(void) {
     s32 i;
 #ifdef PORT
@@ -283,12 +309,19 @@ void BtlAiMgr_Update(void) {
             }
             sightFighter = i;
             BtlAiMgr_UpdateSight();
+            ai_diag(s,0);
             BtlAiSense_Update(s);
+            ai_diag(s,1);
             AiThink_Think(s);
+            ai_diag(s,2);
             BtlAi_RunSeq(s);
             BtlAi_SendInput(s);
+            ai_diag(s,3);
         }
     }
+#ifdef PORT
+    ND_Ai(-1,-1,NULL,0);
+#endif
 }
 
 /* Picks at random one of the directions the stage limits allow: 0 always; in mode 2 also 1 when a fighter

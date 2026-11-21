@@ -7,7 +7,9 @@
 #define ND_ACTORS 15
 #define ND_PADS 10
 #define ND_PAD_BYTES 18
-#define ND_RNG_SITES 64
+#define ND_RNG_SITES 128
+#define ND_AI_STAGES 4
+#define ND_AI_WORDS 32
 #define ND_RNG_EVENTS 65536
 int ND_Enabled(void);
 void ND_Reset(unsigned);
