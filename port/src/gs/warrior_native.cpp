@@ -7,6 +7,7 @@
 #include "warrior_native_regenerate.h"
 #include "warrior_native_effects.h"
 #include "warrior_native_attack_names.h"
+#include "warrior_native_delete.h"
 #include "../port_addr.h"
 #include "../../../include/menu/warrior_fields.h"
 #include <SDL3/SDL.h>
@@ -400,6 +401,18 @@ extern "C" int PortZwNative_New(int copyForm){return new_warrior(copyForm,true);
 extern "C" int PortZwNative_Duplicate(int source) {
     if(source<0 || source>=int(library.entries.size()))return -1;
     return new_warrior(source,false);
+}
+extern "C" int PortZwNative_Delete(int source) {
+    auto &l=library;
+    if(l.process || source<0 || source>=int(l.entries.size()))return 0;
+    if(PortZwNative_Dirty()) {
+        l.status="Save your changes before deleting a character.";return 0;
+    }
+    PortZwNative_PreviewStop();WarriorView_Clear();Port_FileWarriorClose();
+    if(!WarriorNativeDelete::archive(l.root,l.entries[source].folder,l.enabled,l.status))return 0;
+    PortWarriors_Reload();PortZwNative_Open();
+    l.status="Character deleted. A recoverable copy was kept outside the active library.";
+    return 1;
 }
 static std::string native_source(const Document &document,const char *key) {
     auto value=document.get(key);

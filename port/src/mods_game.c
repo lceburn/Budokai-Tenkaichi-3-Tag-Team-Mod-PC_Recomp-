@@ -38,6 +38,7 @@ extern void GAME_PTR BtlChar_FindBySide(int side);
 extern int BtlChar_TestFlag(void GAME_PTR chr, unsigned n);
 extern int ChrCam_IsCutActive(void GAME_PTR chr);
 extern int Battle_IsSplitScreen(void);
+extern int TagTeam_Active(void),TagTeam_ScriptHudActor(int);
 
 #define CHR_POSE 0x10        /* include/battle/btl_act_a.h: the pose block; pos at +0x00 */
 #define POSE_YAW 0x94        /* ... heading yaw */
@@ -75,14 +76,15 @@ void PortMods_GameTick(void) {
     memset(&sGame, 0, sizeof(sGame));
     if (gBtlChars != NULL && gBtlSeq != NULL) {
         for (side = 0; side < 2; side++) {
-            chr = (uint8_t GAME_PTR)BtlChar_FindBySide(side);
+            int actor=TagTeam_ScriptHudActor(side);
+            chr = actor>=0?(uint8_t GAME_PTR)BtlChar_FindBySide(actor):NULL;
             if (chr != NULL) {
                 sGame.f[side].found = 1;
                 rdf(sGame.f[side].pos, chr, CHR_POSE, 3);
                 rdf(&sGame.f[side].yaw, chr, CHR_POSE + POSE_YAW, 1);
             }
         }
-        sGame.battle = sGame.f[0].found && sGame.f[1].found;
+        sGame.battle = sGame.f[0].found && (sGame.f[1].found || TagTeam_Active());
         sGame.split = sGame.battle && Battle_IsSplitScreen();
     }
     Mods_Tick();

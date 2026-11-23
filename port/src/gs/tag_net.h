@@ -43,6 +43,8 @@ typedef struct TagNetStatus {
     int phase,role,host,connected,playerMask,ready[TN_PLAYERS],spectators,view,freeCam;
     unsigned frame,rollbacks;
     char message[192];
+    int syncing,customLocal[TN_FIGHTERS];
+    char customName[TN_FIGHTERS][192];
     TagNetConfig config;
 } TagNetStatus;
 /* The network and local camera are deliberately outside the rollback state.

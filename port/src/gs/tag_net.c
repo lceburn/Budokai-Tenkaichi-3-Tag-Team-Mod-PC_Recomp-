@@ -39,12 +39,12 @@ extern int Port_TagOption(int);
 extern unsigned long long Port_NetDigest(void);
 extern int gPortResim;
 
-enum { PROTOCOL=10, MAGIC=0x544e4554, PAD=18, RING=8192, MAX_PACKET=4096, QUEUE=262144,
+enum { PROTOCOL=11, MAGIC=0x544e4554, PAD=18, RING=8192, MAX_PACKET=4096, QUEUE=262144,
        TN_HELLO=1, TN_CONFIG, TN_READY, TN_START, TN_LOADED, TN_GO, TN_INPUT, TN_DIGEST, TN_LEAVE, TN_REJECT, TN_EDIT, TN_FINISHED, TN_ROOM, TN_PING, TN_PEERS, TN_ROLE, TN_NOTICE, TN_PRACTICE_END,
        TN_HISTORY,TN_REPLAY_PROGRESS,TN_MEMBER,TN_PRACTICE_EDIT,TN_PRACTICE_LOADOUT,TN_BRACKET,TN_PONG,TN_ROSTER,TN_SCORES,TN_GONE,TN_WAIT,TN_AHEAD,TN_CLOCKS,TN_REPORT,
        TN_CUSTOM_SEAT,TN_CUSTOM_CATALOG,TN_CUSTOM_ACK,
        TN_CUSTOM_GET,TN_CUSTOM_BEGIN,TN_CUSTOM_CHUNK,TN_CUSTOM_END,
-       TN_CUSTOM_OFFER,TN_CUSTOM_ACCEPT,TN_CUSTOM_RESULT,
+       TN_CUSTOM_OFFER,TN_CUSTOM_ACCEPT,TN_CUSTOM_RESULT,TN_CUSTOM_PICK,TN_CUSTOM_SYNC,
        PEERS=TN_PLAYERS+TN_SPECTATORS-1, DELAY=2, DELAY_MAX=5, ROLLBACK=8, WINDOW_MAX=12,
        /* Pings go out every second. The host hands a loaded lobby member that is silent for SILENT_MS to the
           CPU; a guest gives the host itself HOST_SILENT_MS. LOAD_MS and RESULT_MS bound the other two waits. */
@@ -87,6 +87,12 @@ static int role=-1,host,phase,ready[TN_PLAYERS],pendingStart,pendingRole,pending
 static int pendingCustom=-1,pendingCustomFighter,pendingCustomCpu;
 static unsigned pendingCustomRevision;
 static TlLoadout pendingCustomSelection;
+typedef struct CustomPick {int set,owner,local,cpu;TlLoadout selection;char name[192];} CustomPick;
+static CustomPick customPicks[TN_FIGHTERS];
+static int customSync,customGrant=-1;
+static void custom_pick_config(const TagNetConfig *next);
+static void custom_pick_snapshot(Peer *p);
+
 static char pendingAddress[128];
 static int watchActor,freeCam,resim,loaded,go,roomInitialized,returned;
 static unsigned baseBlank,frame,live,checked,have[TN_PLAYERS],usedStamp[RING],inputStamp[TN_PLAYERS][RING],sentDigest;
@@ -109,6 +115,7 @@ static int partyEnabled=-1,pendingMode=-1,chosenMode=-1,pendingPractice;
 static int hostMenu,chosenPreset,pendingPreset;
 static int pendingTeams=2,chosenTeams=2,battleTeams,battleTeam=-1;
 static Uint64 coordinatorClock,coordinatorLoadStart,lastRoster;
+#include "tag_practice_clock.h"
 static unsigned coordinatorLogged;
 static int rosterMask,rosterPing[TN_PLAYERS];
 static void finish_room(void);
@@ -435,6 +442,11 @@ static void publish(void) {
     status.phase=phase;status.role=role;status.host=host;status.connected=popcount(mask);status.playerMask=mask;
     memcpy(status.ready,ready,sizeof(ready));status.spectators=spectators();
     status.config=config;status.frame=frame;status.view=watchActor;status.freeCam=freeCam;
+    status.syncing=customSync && phase==2;
+    for(int i=0;i<TN_FIGHTERS;i++) {
+        snprintf(status.customName[i],sizeof(status.customName[i]),"%s",customPicks[i].set?customPicks[i].name:"");
+        status.customLocal[i]=customPicks[i].set?customPicks[i].local:-1;
+    }
     snprintf(status.message,sizeof(status.message),"%s",message);
     SDL_UnlockSpinlock(&uiLock);
 }
@@ -801,6 +813,7 @@ static void send_config(Peer *p) {
     }
     for(i=0;i<sizeof(config)/4;i++)put32(data+i*4,((const unsigned *)c)[i]);
     send_packet(p,TN_CONFIG,data,sizeof(data));
+    custom_pick_snapshot(p);
 }
 static void send_tournament(Peer *p) {
     unsigned char b[sizeof(tournament)];unsigned i;
@@ -813,7 +826,7 @@ static void ready_packet(void) {
     broadcast(TN_READY,data,sizeof(data),NULL);
 }
 static void apply_edit(const TagNetConfig *c) {
-    int i;config=*c;config.revision++;memset(ready,0,sizeof(ready));lastPeerState=-1;
+    int i;custom_pick_config(c);config=*c;config.revision++;if(!customSync)memset(ready,0,sizeof(ready));lastPeerState=-1;
     /* The room record follows the live draft: a copy of it (a join, a return to practice) never resets the teams. */
     if(config.party)partyRoom.draft=config.lobby.draft;
     if(config.party && !config.practice && !tournament.active)for(i=0;i<config.size[0]+config.size[1];i++)if(config.owner[i]>=0) {
@@ -870,6 +883,7 @@ static void end_practice(int mode) {
    The member is told why when it can still hear it, and everybody is told who and why. */
 static void member_lost(Peer *p,int cause) {
     int old=p->role,t,k,cpu;unsigned char b[12];
+    if(customSync && phase==2){failed("A player left during custom character sync. Reopen the room to retry.");return;}
     p->gone=0;
     if(removedText[cause][0]){put32(b,cause);send_packet(p,TN_LEAVE,b,4);retire(p);} else close_peer(p);
     if(old<1 || old>=TL_MEMBERS)return;
@@ -959,6 +973,7 @@ static void input_take(int who,unsigned at,const unsigned char *pad) {
 #include "tag_net_assets.h"
 static void custom_reset(void) {
     custom_cleanup();
+    memset(customPicks,0,sizeof(customPicks));customSync=0;customGrant=-1;
     Wnc_Init(&customCatalog);customSerial=customSelfGeneration=1;customAckSent=0;customCatalogReceived=0;
 }
 static void custom_drop(Peer *p) {
@@ -979,6 +994,7 @@ static int custom_peer_ready(const Peer *p) {
 static void custom_tick(void) {
     int i;unsigned char hash[WNT_HASH];
     if(phase<2 || phase>4)return;
+    if(phase!=2){customSync=0;customGrant=-1;}
     customCatalog.locked=phase!=2;
     if(host) {
         Wnc_Member(&customCatalog,0,1,0,customSelfGeneration);
@@ -1006,6 +1022,12 @@ static void custom_tick(void) {
 static void handle(Peer *p,int type,const unsigned char *data,unsigned n) {
     unsigned i;
     if(!p->hello && type!=TN_HELLO && !(!host && type==TN_REJECT))return;
+    if(type==TN_HELLO && host && customSync && phase==2) {
+        const char *busy="The room is syncing a match. Please reconnect after it starts.";
+        send_packet(p,TN_REJECT,busy,(unsigned)strlen(busy)+1);flush(p);close_peer(p);return;
+    }
+    if(custom_pick_packet(p,type,data,n))return;
+    if(customSync && phase==2 && (type==TN_EDIT || type==TN_ROLE || type==TN_READY))return;
     if(custom_packet(p,type,data,n))return;
     if(type==TN_CUSTOM_SEAT && !host && n==4 && get32(data)) {
         customSelfGeneration=get32(data);customAckSent=0;return;
@@ -1071,7 +1093,7 @@ static void handle(Peer *p,int type,const unsigned char *data,unsigned n) {
     } else if(type==TN_CONFIG && !host && phase==2 && n==sizeof(config)) {
         TagNetConfig c;for(i=0;i<n/4;i++)((unsigned *)&c)[i]=get32(data+i*4);
         if(!valid(&c)){failed("The room contains unsupported fighters, outfits or rules.");return;}
-        config=c;memset(ready,0,sizeof(ready));say("Choose your fighter, then ready up.");
+        custom_pick_config(&c);config=c;if(!customSync){memset(ready,0,sizeof(ready));say("Choose your fighter, then ready up.");}
     } else if(type==TN_BRACKET && !host && config.party && phase==2 && n==sizeof(tournament)) {
         TlTournament t;int k;for(i=0;i<n/4;i++)((unsigned *)&t)[i]=get32(data+i*4);
         if(t.active<0 || t.active>2 || t.match<0 || t.match>7 || t.entered<0 || t.entered>4)return;
@@ -1332,6 +1354,7 @@ static void commands(void) {
     sw=pendingSwitch;pendingSwitch=-1;fighter=pendingFighter;mode=pendingMode;if(mode>=0){chosenPreset=pendingPreset;chosenTeams=pendingTeams;}pendingMode=-1;practice=pendingPractice;pendingPractice=0;
     custom=pendingCustom;pendingCustom=-1;customFighter=pendingCustomFighter;customRevision=pendingCustomRevision;customSelection=pendingCustomSelection;customCpu=pendingCustomCpu;
     SDL_UnlockSpinlock(&uiLock);
+    if(customSync){edit=0;sw=-1;custom=-1;rd=-1;mode=-1;practice=0;}
     if(mode>=0 && host && TagNet_IsPractice())end_practice(mode);
     if(pendingKick>0) {
         int k,id=pendingKick;pendingKick=-1;
@@ -1368,12 +1391,12 @@ static void commands(void) {
         if(host)switch_role(NULL,sw,fighter);
         else {unsigned char p[12];put32(p,config.revision);put32(p+4,sw);put32(p+8,fighter);send_packet(&peers[0],TN_ROLE,p,12);}
     }
-    if(custom>=0) {
+    if(custom>=0 || custom==-2) {
         if(phase!=2 || customRevision!=(unsigned)config.revision ||
            !custom_choose(custom,(unsigned)customFighter,&customSelection,customCpu))
             say("The saved fighter could not be shared. Check your slot and the room's form limit, then select again.");
     }
-    if(rd>=0 && phase==2 && role<TN_PLAYERS && role>=0 && sw<0 && !edit) {
+    if(rd>=0 && !customSync && phase==2 && role<TN_PLAYERS && role>=0 && sw<0 && !edit) {
         if(rd && (!custom_local_ready() || (!config.practice && getenv("BT3_TAG_CUSTOM_TEST_INDEX") && !customProbeDone))) {
             if(strcmp(message,"Waiting for custom character verification."))say("Waiting for custom character verification.");
             rd=0;
@@ -1424,7 +1447,6 @@ static int test_team(void) {
 }
 static int all_ready(void) {
     int i;unsigned mask=player_mask();
-    if(!custom_local_ready() || !Wnc_CanStart(&customCatalog))return 0;
     if(tournament.active==2)return 0;
     if(config.party && !config.practice){if(!ready[0])return 0;}
     else if(!mask)return 0;
@@ -1437,6 +1459,8 @@ static int all_ready(void) {
         if(popcount(mask)<wanted)return 0;
     }
     for(i=0;i<TN_PLAYERS;i++)if((mask&(1u<<i)) && !ready[i])return 0;
+    if(custom_sync_step())return 0;
+    if(!custom_local_ready() || !Wnc_CanStart(&customCatalog))return 0;
     return 1;
 }
 void TagNet_MenuPoll(void) {commands();pump();publish();}
@@ -1522,7 +1546,7 @@ int TagNet_Room(void) {
            roundId>=(unsigned)atoi(getenv("BT3_TAG_CUSTOM_TEST_EXIT_AFTER"))) {
             TagNet_Leave();commands();leaveMenu=1;break;
         }
-        if(host && phase==2) {
+        if(host && phase==2 && !customSync) {
             extern int Port_GameSpeed(void);int speed=Port_GameSpeed();
             if(config.speed!=speed){TagNetConfig c=config;c.speed=speed;apply_edit(&c);}
         }
@@ -1604,7 +1628,7 @@ close_menu:
     memset(inputStamp,255,sizeof(inputStamp));memset(usedStamp,255,sizeof(usedStamp));memset(digestStamp,255,sizeof(digestStamp));
     for(i=0;i<=inputDelay;i++) {int p;for(p=0;p<TN_PLAYERS;p++)if(input_mask()&(1u<<p))input_take(p,i,idle);}
     if(host && config.party && config.practice) {
-        hostMenu=1;loaded=1;coordinatorClock=coordinatorLoadStart=SDL_GetTicks();coordinatorLogged=0;
+        hostMenu=1;loaded=1;coordinatorLoadStart=SDL_GetTicks();coordinatorClock=coordinatorLoadStart*60;coordinatorLogged=0;
         fprintf(stderr,"tagnet: host remains on native mode menu; no practice battle loaded\n");
         return 2;
     }
@@ -1736,16 +1760,14 @@ static void coordinator(void) {
         }
         toldWait=~0u;
         {unsigned char b[4];put32(b,roundId);broadcast(TN_GO,b,4,NULL);}
-        go=1;phase=4;coordinatorClock=now;say("Practice is ready. Choose a mode from the native menu.");
+        go=1;phase=4;coordinatorClock=now*60;say("Practice is ready. Choose a mode from the native menu.");
     }
     /* No guests means no practice world needs time. Resuming still uses the
        same archive and generation-tagged membership events. */
-    if(!guests){coordinatorClock=now;if(practiceEnd)frame=practiceEnd;}
-    target=frame+(unsigned)((now-coordinatorClock)*60/1000);
-    if(target>frame+16)target=frame+16;
+    if(!guests){coordinatorClock=now*60;if(practiceEnd)frame=practiceEnd;}
+    target=TagPracticeClock_Target(&coordinatorClock,now,frame);
     /* Keep supplying inputs through the native exit fade and pending jobs.
        Guests acknowledge FINISHED only after that transition has completed. */
-    if(target>frame)coordinatorClock+=((Uint64)(target-frame)*1000+59)/60;
     for(i=0;i<TN_PLAYERS;i++) {
         unsigned end=target+inputDelay+1;
         while(have[i]<end && (!i || !produces(i,have[i]) || (disconnectedMask&(1u<<i)))) {

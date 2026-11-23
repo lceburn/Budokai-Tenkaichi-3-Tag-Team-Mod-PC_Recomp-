@@ -93,6 +93,7 @@ static int custom_fighter_owned(int owner,unsigned fighter,unsigned revision) {
         fighter<(unsigned)(config.size[0]+config.size[1]) &&
         (config.owner[fighter]==owner || (owner==0 && config.owner[fighter]<0));
 }
+#include "tag_net_deferred.h"
 /* Takes ownership of bytes only on success. IDs are append-only and registration
    precedes config publication. No partial form family is admitted. */
 static int custom_admit(int member,unsigned generation,unsigned fighter,unsigned base,
@@ -110,13 +111,14 @@ static int custom_admit(int member,unsigned generation,unsigned fighter,unsigned
         if(!custom_install(index,bytes,size,forms)){customCatalog=previous;return 0;}
         if(!custom_activate()){failed("Custom character resources could not be registered. Room stopped.");return 1;}
     }else WarriorNetPack_Free(bytes); /* Same family already has stable room IDs. */
+    custom_pick_clear(fighter);
     {TagNetConfig c=config;c.chara[fighter]=first+(int)base;c.costume[fighter]=selection->costume;
      if(c.owner[fighter]<0)c.cpuLevel[fighter]=cpuLevel;
      memcpy(c.items[fighter],selection->items,sizeof(c.items[fighter]));apply_edit(&c);}
     fprintf(stderr,"custom assets: admitted owner=%u first=%d forms=%u\n",customCatalog.entries[index].owner,first,forms);
     return 1;
 }
-static int custom_choose(int local,unsigned fighter,const TlLoadout *selection,int cpuLevel) {
+static int custom_share(int local,unsigned fighter,const TlLoadout *selection,int cpuLevel) {
     unsigned char *bytes=NULL;unsigned size=0,base=0,forms;int owner=host?0:role;
     TlLoadout chosen={0};unsigned k;
     if(selection)chosen=*selection;
@@ -128,7 +130,7 @@ static int custom_choose(int local,unsigned fighter,const TlLoadout *selection,i
     }
     forms=(unsigned)WarriorNetPack_Check(bytes,size);
     if(!forms){WarriorNetPack_Free(bytes);return 0;}
-    memset(ready,0,sizeof(ready));
+    if(!customSync)memset(ready,0,sizeof(ready));
     if(host) {
         int ok=custom_admit(0,customSelfGeneration,fighter,base,(unsigned)config.revision,bytes,size,forms,&chosen,cpuLevel);
         if(ok)customLocalRoom[local]=config.chara[fighter];
@@ -172,7 +174,7 @@ static int custom_packet(Peer *p,int type,const unsigned char *data,unsigned n) 
             p->customFighter=get32(data+4);p->customBase=get32(data+8);p->customRevision=get32(data);
             p->customSelection=selection;
             p->customCpu=(int)get32(data+96);
-            memset(ready,0,sizeof(ready));ready_packet();
+            if(!customSync)memset(ready,0,sizeof(ready));ready_packet();
         }
         send_packet(p,TN_CUSTOM_ACCEPT,reply,sizeof(reply));return 1;
     }
@@ -263,13 +265,14 @@ static void custom_assets_tick(void) {
         }
     }
     if(!host && customOffer.state && now>=customOffer.deadline){failed("The host did not finish the custom character request.");return;}
-    if(!host && customCatalogReceived && !customWorldLive && !peers[0].customRequest && !peers[0].customRx.state) {
+    if(!host && (customSync || config.practice || phase>=3) && customCatalogReceived && !customWorldLive && !peers[0].customRequest && !peers[0].customRx.state) {
         for(i=0;i<customCatalog.count;i++)if(!customBlobs[i].data) {
             unsigned char request[8];peers[0].customRequest=i+1;
             peers[0].customRequestDeadline=now+WNT_TIMEOUT_MS;
             put32(request,i+1);put32(request+4,customSelfGeneration);send_packet(&peers[0],TN_CUSTOM_GET,request,sizeof(request));break;
         }
     }
+    custom_sync_progress();
     /* Private test entry, deliberately not a release UI. */
     if(!customProbeDone && phase==2 && !config.practice && role>=0 && role<TN_PLAYERS &&
        (host || customCatalogReceived) && getenv("BT3_TAG_CUSTOM_TEST_INDEX")) {

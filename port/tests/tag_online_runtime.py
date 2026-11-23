@@ -338,7 +338,7 @@ try:
             if all('went out of sync' in log.read_text(errors='replace') for _,_,_,log in jobs):
                 time.sleep(1);completed=True;break
             time.sleep(.2);continue
-        party_done=a.party and not a.rounds and not a.disconnect and all('frame 1200,' in log.read_text(errors='replace') for _,_,_,log in jobs)
+        party_done=a.party and not a.rounds and not a.disconnect and all(('frame %d,'%max(1200,a.frames)) in log.read_text(errors='replace') for _,_,_,log in jobs)
         # Online battles enter through the room, not the attract demo. Its
         # BT3_TEST_FRAMES counter measures battle-clock changes, accumulates
         # across rounds, and can exit before a room return completes. The

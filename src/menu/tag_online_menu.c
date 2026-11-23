@@ -423,7 +423,7 @@ static void lobby(void) {
             y=102+j*39;i=(team?c->size[0]:0)+j;
             if(j<c->size[team]) {
                 button(team*5+j,x,y,232,36,"",!(c->party&&c->mode==TL_GAUNTLET&&team));portrait(c->chara[i],x+7,y+3,30,30);
-                name(0,c->chara[i],label,sizeof(label));left(x+43,y+1,label,0.65f,181,focus==team*5+j?1:0);
+                if(room.customName[i][0])Ps_Copy(label,room.customName[i],sizeof(label));else name(0,c->chara[i],label,sizeof(label));left(x+43,y+1,label,0.65f,181,focus==team*5+j?1:0);
                 p=c->owner[i];if(p<0)Ps_Copy(label,"CPU",sizeof(label));else sprintf(label,Port_TagText("P%d%s  -  %s"),p+1,Port_TagText(p==room.role?" (YOU)":""),Port_TagText(room.ready[p]?"READY":"CHOOSING"));
                 if(c->party&&c->mode==TL_TOURNAMENT){char who[60];Ps_Copy(who,label,sizeof(who));sprintf(label,Port_TagText("TEAM %d  -  %s"),c->lobby.draft.team[i]+1,who);}
                 if(squad) {
@@ -586,7 +586,13 @@ static void draw(void) {
     /* The original menu's purple/cyan backdrop and cloud frame remain visible. */
     Ps_Rect(9,73,503,420,Ps_Rgba(26,17,42,100),Ps_Rgba(30,15,44,114));
     IconWin_Draw();buttonCount=0;
-    if(room.phase==3){heading("GET READY","EVERYONE IS READY - LOADING THE BATTLE");load_stage(room.config.stage);stage_preview(72,100,368,275);}
+    if(room.syncing) {
+        heading("SYNCING CHARACTERS","EVERYONE IS READY - PREPARING THE MATCH");
+        text(256,170,room.message,.9f,450,2);
+        text(256,225,"Custom fighters and transformations are temporary.",.7f,450,3);
+        text(256,260,"The match starts after every player verifies the files.",.7f,450,3);
+    }
+    else if(room.phase==3){heading("GET READY","EVERYONE IS READY - LOADING THE BATTLE");load_stage(room.config.stage);stage_preview(72,100,368,275);}
     else if(page==HOME)home();else if(page==ADDRESS)connection();else if(page==ROOM)lobby();
     else if(page==STAGE)stages();else if(page==MUSIC)music();
     else if(page==RULES)rules();else if(page==GROUPS)groups();else if(page==OPTIONS)options();else if(page==PRESETS)presets();
@@ -620,14 +626,14 @@ s32 TagOnlineMenu_Frame(void) {
     if(strcmp(lastMessage,room.message)) {Ps_Copy(lastMessage,room.message,sizeof(lastMessage));say(lastMessage);}
     Job_Run();Gfx_BeginFrame();Pad_Update();Snd_Update();ColorFade_Update();
     if(room.phase==5){if(gPad[0].gamePressed&(PADG_CROSS|PADG_TRIANGLE)){TagNet_Leave();go(HOME,0);}}
-    else if(room.phase!=3 && frames>12)input();
+    else if(room.phase!=3 && !room.syncing && frames>12)input();
 
     draw();ColorFade_Draw();File_Stub264D90();Gfx_EndFrame(1);Dma_Flush();frames++;
     Port_TagMenuTrace(81,page,focus,room.phase,room.role,room.config.revision);
     if(pendingPick>=0) {
         TagNetConfig c=room.config;TsMember member;TagNetStatus after;
         s32 id=pendingPick,k,level=c.cpuLevel[id]<0?c.cpu:c.cpuLevel[id],accepted,oldFocus=focus;
-        pendingPick=-1;memset(&member,0,sizeof(member));member.chara=c.chara[id];member.color=c.costume[id];
+        pendingPick=-1;memset(&member,0,sizeof(member));member.chara=room.customLocal[id]>=0?PORT_WARRIOR_FIRST_CHARACTER+room.customLocal[id]:c.chara[id];member.color=c.costume[id];
         for(k=0;k<8;k++)member.items.id[k]=c.items[id][k];
         TagOnlineMenu_Close();
         accepted=TeamSel_PickOnline(&member,c.owner[id]<0,&level,c.revision);
@@ -638,10 +644,9 @@ s32 TagOnlineMenu_Frame(void) {
                 for(k=0;k<8;k++)loadout.items[k]=member.items.id[k];
                 TagNet_ChooseCustom(member.chara-PORT_WARRIOR_FIRST_CHARACTER,id,(unsigned)c.revision,&loadout,level);
             }else {
-                c.chara[id]=member.chara;c.costume[id]=member.color;
-                if(c.owner[id]<0)c.cpuLevel[id]=level;
-                for(k=0;k<8;k++)c.items[id][k]=member.items.id[k];
-                TagNet_Edit(&c);
+                TlLoadout loadout;loadout.chara=member.chara;loadout.costume=member.color;
+                for(k=0;k<8;k++)loadout.items[k]=member.items.id[k];
+                TagNet_ChooseCustom(-2,id,(unsigned)c.revision,&loadout,level);
             }
         }
         TagOnlineMenu_Open();TagNet_Status(&room);previousPhase=room.phase;

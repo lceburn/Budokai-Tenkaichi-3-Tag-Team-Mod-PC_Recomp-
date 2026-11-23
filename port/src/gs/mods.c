@@ -931,6 +931,7 @@ static void push_game(lua_State *L, const FpState *fp, const ModsGame *g) {
     for (side = 0; side < 2 && fp->battle && g->battle; side++) {
         const FpSide *s = &fp->side[side];
         const ModsFighter *f = &g->f[side];
+        if(!s->found || !f->found)continue;
         lua_createtable(L, 0, 24);
         set_int(L, "side", side + 1);
         set_int(L, "active", s->active + 1);

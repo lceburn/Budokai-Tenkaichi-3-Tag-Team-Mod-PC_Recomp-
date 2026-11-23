@@ -1083,10 +1083,10 @@ extern unsigned gPortVu0R;
 extern s32 BtlScene_IsSingleView(void);
 extern void BtlScene_SetSingleView(s32);
 s32 TagOnline_PresentationActor(s32 fallback) { return onlineDrawing?onlineActor:fallback; }
-s32 TagOnline_BeginDraw(void) {
-    s32 actor,chosen,view=0,role=TagNet_Role(),i,t,m,shared;
+s32 TagOnline_LocalActor(s32 fallback) {
+    s32 actor,chosen,role=TagNet_Role(),i,t,m;
     TagNetConfig c;
-    if(!TagNet_Active() || !TagTeam_Active())return 0;
+    if(!TagNet_Active() || !TagTeam_Active())return fallback;
     if(role>=0 && role<TN_PLAYERS && !TagNet_Observer())actor=TagTeam_ViewActor(role);
     else {
         TagNet_CopyConfig((u32)&c);chosen=TagNet_View();actor=0;
@@ -1097,6 +1097,21 @@ s32 TagOnline_BeginDraw(void) {
         actor=0;
 found:  actor=TagFusion_Owner(actor);
     }
+    return actor;
+}
+/* Scripts read outside the presentation pass, so resolve the same local actor
+   explicitly instead of relying on the temporarily substituted draw camera. */
+s32 TagTeam_ScriptHudActor(s32 panel) {
+    extern s32 TagTeam_HudTarget(s32);
+    s32 own;
+    if(!TagTeam_Active())return panel;
+    own=TagOnline_LocalActor(TagTeam_ViewActor(0));
+    return panel?TagTeam_HudTarget(own):own;
+}
+s32 TagOnline_BeginDraw(void) {
+    s32 actor,chosen,view=0,i,shared,role=TagNet_Role();
+    if(!TagNet_Active() || !TagTeam_Active())return 0;
+    actor=TagOnline_LocalActor(0);
     onlineActor=actor;onlineSavedRandom=gPortRandNext;onlineSavedFloatRandom=gPortVu0R;
     onlineSavedView=nativeViews[0];onlineSavedCurrent=gBtlCam->cur;onlineSavedMatrix=gBtlCamView;
     onlineSavedZoom=sPortZoomView[0];onlineSavedZoomOn=sPortZoomOn[0];

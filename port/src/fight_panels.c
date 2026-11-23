@@ -160,10 +160,12 @@ static void portrait_path(int side, int slot, int chara, int costume) {
     }
 }
 
+extern int TagTeam_Active(void),TagTeam_ScriptHudActor(int);
 static void read_side(FpState *st, int side) {
+    int actor=TagTeam_ScriptHudActor(side), opponent=TagTeam_ScriptHudActor(side^1);
     FpSide *s = &st->side[side];
-    uint8_t GAME_PTR chr = (uint8_t GAME_PTR)BtlChar_FindBySide(side);
-    uint8_t GAME_PTR foe = (uint8_t GAME_PTR)BtlChar_FindBySide(side ^ 1);
+    uint8_t GAME_PTR chr = actor>=0?(uint8_t GAME_PTR)BtlChar_FindBySide(actor):NULL;
+    uint8_t GAME_PTR foe = opponent>=0?(uint8_t GAME_PTR)BtlChar_FindBySide(opponent):NULL;
     uint8_t GAME_PTR m;
     int i, objChara;
 
@@ -178,7 +180,7 @@ static void read_side(FpState *st, int side) {
         return;
     }
     s->found = 1;
-    objChara = BtlCharApi_GetChara(side);
+    objChara = BtlCharApi_GetChara(actor);
     for (i = 0; i < s->count; i++) {
         FpMember *o = &s->m[i];
         m = chr + CHR_MEMBERS + i * MEMBER_SIZE;
@@ -205,7 +207,7 @@ static void read_side(FpState *st, int side) {
     }
     s->action = BtlAct_GetCurrent(chr);
     s->chargeHeld = BtlInput_IsHeld(chr, BTLB_CHARGE) != 0;
-    s->cpu = BattleSide_IsCpu(side) != 0;
+    s->cpu = BattleSide_IsCpu(actor) != 0;
     {
         uint8_t GAME_PTR obj = (uint8_t GAME_PTR)BtlChar_GetObj(chr);
         uint32_t at = obj != NULL ? (uint32_t)rd(obj, OBJ_NAMES) : 0;
@@ -262,7 +264,7 @@ void PortPanels_GameTick(void) {
     if (gBtlChars != NULL && gBtlSeq != NULL) {
         read_side(&st, 0);
         read_side(&st, 1);
-        st.battle = st.side[0].found && st.side[1].found;
+        st.battle = st.side[0].found && (st.side[1].found || TagTeam_Active());
         h = gHud;
         st.gauges = st.battle && h != NULL && (h->flags & HUD_SHOW_GAUGES) != 0;
     }

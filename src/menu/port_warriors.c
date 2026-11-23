@@ -13,7 +13,7 @@ extern char *strchr(const char *,s32),*strstr(const char *,const char *);
 extern void WarriorView_Open(void),WarriorView_Clear(void),WarriorView_Close(void);
 extern void WarriorView_Draw(s32,f32,f32,f32,s32);
 
-enum { ZW_LIBRARY,ZW_EDIT,ZW_CHOOSE,ZW_NAME_PAD,ZW_COLOUR,ZW_FORMS,ZW_BUILD,ZW_NOTICE,ZW_DISCARD,ZW_SURFACES,ZW_SCALE };
+enum { ZW_LIBRARY,ZW_EDIT,ZW_CHOOSE,ZW_NAME_PAD,ZW_COLOUR,ZW_FORMS,ZW_BUILD,ZW_NOTICE,ZW_DISCARD,ZW_SURFACES,ZW_SCALE,ZW_DELETE };
 static s32 page,tab,row,libraryRow,warrior,leaving,field,choice,choiceCount,parameter,channel,keyCursor;
 static s32 choices[252],rgb[3];
 static char text[512],value[512],notice[512];
@@ -124,6 +124,12 @@ static void zw_update(void) {
     if(page==ZW_LIBRARY) {
         Ps_Move(&libraryRow,PortZwNative_Count()+2);
         if(pressed&PADG_TRIANGLE) {if(PortZwNative_Dirty())zw_page(ZW_DISCARD);else zw_end();}
+        else if((pressed&PADG_CIRCLE) && libraryRow>0 && libraryRow<=PortZwNative_Count()) {
+            warrior=libraryRow-1;zw_name(warrior,value,sizeof(value));
+            Ps_Copy(notice,"Delete ",sizeof(notice));Ps_Cat(notice,value,sizeof(notice));
+            Ps_Cat(notice,"? This removes the character from your roster.",sizeof(notice));
+            zw_page(ZW_DELETE);
+        }
         else if((pressed&PADG_SQUARE) && libraryRow>0 && libraryRow<=PortZwNative_Count()) {
             warrior=PortZwNative_Duplicate(libraryRow-1);
             if(warrior<0)zw_status();else {libraryRow=warrior+1;tab=0;row=0;zw_page(ZW_EDIT);}
@@ -210,6 +216,15 @@ static void zw_update(void) {
             }
             PortZwNative_Write(field,(u32)value);zw_page(ZW_EDIT);
         }
+    }else if(page==ZW_DELETE) {
+        if(pressed&PADG_TRIANGLE)zw_page(ZW_LIBRARY);
+        else if(pressed&PADG_CROSS) {
+            if(PortZwNative_Delete(warrior)) {
+                warrior=-1;libraryRow=libraryRow>PortZwNative_Count()?PortZwNative_Count():libraryRow;
+                previewStarted=previewState=0;
+            }
+            zw_status();
+        }
     }else if(page==ZW_NOTICE) {
         if(pressed&(PADG_CROSS|PADG_TRIANGLE)){zw_page(warrior>=0 && warrior<PortZwNative_Count()?ZW_EDIT:ZW_LIBRARY);if(libraryRow>PortZwNative_Count()+1)libraryRow=0;}
     }else if(page==ZW_DISCARD) {
@@ -259,7 +274,7 @@ static void zw_draw(void) {
             zw_name(libraryRow-1,heading,sizeof(heading));Ps_Heading(322,93,heading,1.15f,175,0x80);
         }
         Ps_Prompt(0,"Create / Edit");Ps_Prompt(2,"Back");
-        if(libraryRow>0 && libraryRow<=PortZwNative_Count())Ps_Prompt(1,"Duplicate");
+        if(libraryRow>0 && libraryRow<=PortZwNative_Count()){Ps_Prompt(1,"Duplicate");Ps_Prompt(4,"Delete");}
         Ps_Copy(line,"Choose a warrior to edit, or create a new one.",sizeof(line));
     }else if(page==ZW_EDIT) {
         static char *tabs[]={"WARRIOR","PARTS","MOVES","FORMS"};
@@ -354,7 +369,8 @@ static void zw_draw(void) {
         char *message=page==ZW_BUILD?"Building and validating your warriors...":page==ZW_DISCARD?"Discard unsaved creator changes and leave?":notice;
         Ps_Rect(14,112,498,280,Ps_Rgba(77,37,134,120),Ps_Rgba(56,25,96,120));
         Ps_Text(29,137,message,.95f,454,2);
-        if(page==ZW_DISCARD){Ps_Prompt(0,"Discard");Ps_Prompt(2,"Keep editing");}
+        if(page==ZW_DELETE){Ps_Prompt(0,"Delete");Ps_Prompt(2,"Cancel");}
+        else if(page==ZW_DISCARD){Ps_Prompt(0,"Discard");Ps_Prompt(2,"Keep editing");}
         else if(page!=ZW_BUILD)Ps_Prompt(0,"Continue");
         Ps_Copy(line,page==ZW_BUILD?"Your current playable files are kept until the build passes validation.":"Z Warriors",sizeof(line));
     }

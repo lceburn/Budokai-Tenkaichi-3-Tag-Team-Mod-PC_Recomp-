@@ -149,6 +149,7 @@ int main(void) {
     }
 
     sFp.battle = 1;
+    sFp.side[0].found = sFp.side[1].found = 1;
     sG.battle = 1;
     sFp.side[0].count = 1;
     sFp.side[0].m[0].hp = 12345;
