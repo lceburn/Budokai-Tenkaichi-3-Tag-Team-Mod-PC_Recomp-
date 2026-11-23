@@ -40,6 +40,7 @@
 extern unsigned gPortVBlanks;                     /* plat_stub.c */
 extern volatile int gUiPresentW, gUiPresentH;     /* gs_draw.c: the game's picture in the window */
 extern int Port_NetSession(void), Port_NetActive(void); /* gs/net.c */
+extern int TagNet_Active(void), TagNet_Observer(void);
 extern int Port_HudSwap(void);                    /* gs/net.c: this copy shows the HUD's sides swapped */
 extern const char *MenuTranslation_Text(const char *id); /* gs/menu_translation.c: a label in the menus' language */
 extern const char *MenuTranslation_Locale(void);
@@ -915,9 +916,9 @@ static void push_game(lua_State *L, const FpState *fp, const ModsGame *g) {
     set_bool(L, "battle", fp->battle && g->battle);
     set_bool(L, "hud_shown", fp->gauges);
     set_bool(L, "online", Port_NetSession() || Port_NetActive());
-    if (Port_NetSession() || Port_NetActive()) { /* the side this copy plays (1 the host, 2 the one who joined) */
+    if (Port_NetSession() || Port_NetActive()) { /* Tag rooms expose view-relative panels: own fighter first, target second. */
         extern int Port_NetMe(void);
-        set_int(L, "me", Port_NetMe() + 1);
+        set_int(L, "me", TagNet_Active() ? (TagNet_Observer() ? 0 : 1) : Port_NetMe() + 1);
     }
     set_bool(L, "split", g->split);
     set_bool(L, "swapped", Port_HudSwap());

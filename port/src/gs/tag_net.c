@@ -1628,7 +1628,7 @@ close_menu:
     memset(inputStamp,255,sizeof(inputStamp));memset(usedStamp,255,sizeof(usedStamp));memset(digestStamp,255,sizeof(digestStamp));
     for(i=0;i<=inputDelay;i++) {int p;for(p=0;p<TN_PLAYERS;p++)if(input_mask()&(1u<<p))input_take(p,i,idle);}
     if(host && config.party && config.practice) {
-        hostMenu=1;loaded=1;coordinatorLoadStart=SDL_GetTicks();coordinatorClock=coordinatorLoadStart*60;coordinatorLogged=0;
+        hostMenu=1;loaded=1;coordinatorLoadStart=SDL_GetTicks();coordinatorClock=SDL_GetTicksNS();coordinatorLogged=0;
         fprintf(stderr,"tagnet: host remains on native mode menu; no practice battle loaded\n");
         return 2;
     }
@@ -1760,12 +1760,12 @@ static void coordinator(void) {
         }
         toldWait=~0u;
         {unsigned char b[4];put32(b,roundId);broadcast(TN_GO,b,4,NULL);}
-        go=1;phase=4;coordinatorClock=now*60;say("Practice is ready. Choose a mode from the native menu.");
+        go=1;phase=4;coordinatorClock=SDL_GetTicksNS();say("Practice is ready. Choose a mode from the native menu.");
     }
     /* No guests means no practice world needs time. Resuming still uses the
        same archive and generation-tagged membership events. */
-    if(!guests){coordinatorClock=now*60;if(practiceEnd)frame=practiceEnd;}
-    target=TagPracticeClock_Target(&coordinatorClock,now,frame);
+    if(!guests){coordinatorClock=SDL_GetTicksNS();if(practiceEnd)frame=practiceEnd;}
+    target=TagPracticeClock_Target(&coordinatorClock,SDL_GetTicksNS(),frame);
     /* Keep supplying inputs through the native exit fade and pending jobs.
        Guests acknowledge FINISHED only after that transition has completed. */
     for(i=0;i<TN_PLAYERS;i++) {
@@ -1775,7 +1775,7 @@ static void coordinator(void) {
         }
     }
     limit=confirmed();if(target>limit)target=limit;
-    if(target>frame)frame=target;
+    if(target>frame){TagPracticeClock_Advance(&coordinatorClock,target-frame);frame=target;}
     record_history(frame);
     /* A paced host can cross 600 between two updates. Trigger the opt-in
        editor fixture once at that boundary, before advancing its log marker. */

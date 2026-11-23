@@ -67,12 +67,12 @@ What every function is given about the game, read at the last blank:
 | `game.battle` | `true` while a fight's fighters are there |
 | `game.hud_shown` | the fight is on with its gauges shown (not during cut-scenes or menus) |
 | `game.online` | an online session |
-| `game.me` | online: the side this copy plays (1 or 2); not set offline |
+| `game.me` | online: index of this copy's own fighter in `game.fighters`; native tag rooms use 1, or 0 for an observer; legacy online uses 1 or 2; not set offline |
 | `game.split` | split-screen layout |
 | `game.swapped` | this copy shows the HUD's sides swapped (an online match seen from player 2's side) |
 | `game.time` | seconds on the computer's clock, for animations |
 | `game.timer` | what the game's timer shows: `value` (seconds left, -1 no limit, or a count) and `clock` (`true`: seconds) |
-| `game.fighters[1]`, `[2]` | player 1's and player 2's side (only in a fight) |
+| `game.fighters[1]`, `[2]` | native tag battles: local-view fighter and current target; other battles: player 1 and player 2 (only in a fight) |
 
 Each fighter:
 

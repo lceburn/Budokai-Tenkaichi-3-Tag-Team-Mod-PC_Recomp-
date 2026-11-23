@@ -15,8 +15,12 @@
 
 unsigned gPortVBlanks;
 volatile int gUiPresentW = 1280, gUiPresentH = 896; /* (448 high in HUD units, 640 wide) */
-int Port_NetSession(void) { return 0; }
-int Port_NetActive(void) { return 0; }
+static int online,tagRoom,observer,netRole;
+int Port_NetSession(void) { return online; }
+int Port_NetActive(void) { return online; }
+int Port_NetMe(void) { return netRole; }
+int TagNet_Active(void) { return tagRoom; }
+int TagNet_Observer(void) { return observer; }
 int Port_HudSwap(void) { return 0; }
 const char *MenuTranslation_Text(const char *id) { return strcmp(id, "combo-hits/0/0") == 0 ? "Golpes" : NULL; }
 const char *MenuTranslation_Locale(void) { return "es"; }
@@ -314,6 +318,38 @@ int main(void) {
     CHECK(Mods_HudHidden() == 0); /* split-screen retains all native gauges */
     sG.split = 0; Mods_Tick();
     CHECK((Mods_HudHidden() & 1) != 0); /* single-view Modern HUD replaces them */
+
+    /* The actual shipped skill script must use the view-relative own panel in
+       tag rooms, on the host and every guest, rather than the network seat. */
+    for (i = 0; i < Mods_Count(); i++) Mods_Info(i)->enabled = strcmp(Mods_Info(i)->folder, "skill_list") == 0;
+    m = mod("skill_list");
+    for (i = 0; i < m->settings; i++) if (!strcmp(m->set[i].id, "always")) m->set[i].value = 1;
+    strcpy(sFp.side[0].moves[0].name, "OWN_SKILL");
+    strcpy(sFp.side[1].moves[0].name, "TARGET_SKILL");
+    sFp.side[0].cpu = sFp.side[1].cpu = 0;
+    online = tagRoom = 1;
+    for (netRole = 0; netRole < 10; netRole++) {
+        int own = 0, target = 0;
+        Mods_Tick(); CHECK(Mods_HudRead(&sRead));
+        for (i = 0; i < sRead.count; i++) if (sRead.cmd[i].kind == MODS_CMD_TEXT) {
+            const ModsCmd *c = &sRead.cmd[i];
+            own += c->n == 9 && !memcmp(sRead.text + c->at, "OWN_SKILL", 9);
+            target += c->n == 12 && !memcmp(sRead.text + c->at, "TARGET_SKILL", 12);
+        }
+        CHECK(own == 1 && target == 0);
+    }
+    observer = 1; Mods_Tick(); Mods_HudRead(&sRead); CHECK(sRead.count == 0);
+    observer = tagRoom = 0; netRole = 1;
+    Mods_Tick(); CHECK(Mods_HudRead(&sRead));
+    { int own = 0, target = 0;
+      for (i = 0; i < sRead.count; i++) if (sRead.cmd[i].kind == MODS_CMD_TEXT) {
+        const ModsCmd *c = &sRead.cmd[i];
+        own += c->n == 9 && !memcmp(sRead.text + c->at, "OWN_SKILL", 9);
+        target += c->n == 12 && !memcmp(sRead.text + c->at, "TARGET_SKILL", 12);
+      }
+      CHECK(own == 0 && target == 1);
+    }
+    online = 0;
 
     Mods_Lock();
     unload_all();
