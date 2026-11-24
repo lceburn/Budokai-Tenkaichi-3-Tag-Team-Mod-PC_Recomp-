@@ -77,6 +77,7 @@ p.add_argument('--team-differ', metavar='CLIENT:SLOT', help='This client alone p
 p.add_argument('--host-pad', help='Scripted pad of a rendered host (frame:button,...); the host then chooses the mode in its menu itself and never readies')
 p.add_argument('--shots', action='append', default=[], metavar='CLIENT:FRAME,FRAME,...', help='Render this client and save its window at these frames; the run ends when the last one exists')
 p.add_argument('--capture-desync',action='store_true',help='Stop once both clients save a natural mismatch; exit 2 to distinguish reproduction from a pass')
+p.add_argument('--setting',action='append',default=[],metavar='KEY=INTEGER',help='Reproduction settings written before the game starts, in addition to the selected game speed')
 p.add_argument('--client-env',action='append',default=[],metavar='CLIENT:NAME=VALUE',help='Diagnostic environment override for one isolated test client')
 p.add_argument('--env', action='append', default=[], metavar='NAME=VALUE', help='One more environment variable for every client (diagnostic switches)')
 a=p.parse_args()
@@ -240,7 +241,10 @@ def spawn(name):
             (out/('shots-'+name)).mkdir(exist_ok=True)
             for old in (out/('shots-'+name)).glob('*.ppm'):old.unlink()
             e.update(BT3_GS='gpu',BT3_UI_SHOTS=item.split(':')[1]+':'+str(out/('shots-'+name))+os.sep)
-    pathlib.Path(e['BT3_SETTINGS']).write_text('game_speed='+str(a.host_speed if name=='host' else a.guest_speed)+'\n')
+    settings='game_speed='+str(a.host_speed if name=='host' else a.guest_speed)+'\n'
+    for item in a.setting:
+        key,value=item.split('=',1);assert re.fullmatch(r'[A-Za-z0-9_]+',key);settings+=key+'='+str(int(value))+'\n'
+    pathlib.Path(e['BT3_SETTINGS']).write_text(settings)
     # Real hosts run at display speed. An uncapped headless host otherwise
     # creates replay history as quickly as a replacement can consume it.
     if name=='host' and (a.rejoin or a.late_join):e['BT3_PACED']='1'

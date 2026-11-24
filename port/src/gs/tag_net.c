@@ -1889,6 +1889,14 @@ void TagNet_Tick(unsigned blank) {
                     if(at%90<10)pad[1]&=~128;
                 }
             }
+            /* Opt-in local reproduction: these are ordinary pad bytes sent
+               through the existing input stream, never out-of-band game state. */
+            if(getenv("BT3_TAG_TEST_TARGET_INPUT") && role==atoi(getenv("BT3_TAG_TEST_TARGET_INPUT"))) {
+                unsigned at=frame%360;
+                if(at<64 || (at>=110 && at<118))pad[0]&=~2; /* hold L3, then tap to relock */
+                if(at>=200 && at<208){pad[2]=0x80;pad[3]=0;} /* right stick up */
+                if(at>=270 && at<278){pad[2]=0x80;pad[3]=0xff;}
+            }
             if(TagNet_TestCase()==8 && role==popcount(player_mask())-1) {
                 /* Actual remote pad inputs exercise open/cancel, then the
                    pause menu's Return to room confirmation. */

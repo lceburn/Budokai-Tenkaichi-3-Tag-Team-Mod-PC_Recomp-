@@ -656,13 +656,13 @@ s32 TagTeam_HudTarget(s32 actor) {
 }
 
 static void relock(s32 actor) {
-    extern BtlCamView *BtlCam_GetNativeView(s32);
+    extern BtlCamView *BtlCam_GetTargetView(s32);
     extern void BtlCharApi_GetPos(s32, Vec4 *);
     s32 i, v=0, best=-1, rect[4];
     f32 score=1.0e30f;
     Mtx44 *m;
     for (i=0;i<viewCount;i++) if ((TagNet_Active()||TagTeam_ViewVisible(i))&&TagTeam_ViewActor(i)==actor) { v=i; break; }
-    m=&BtlCam_GetNativeView(v)->view.world2screen;
+    m=&BtlCam_GetTargetView(v)->view.world2screen;
     TagTeam_ViewRect(v,rect);
     for (i=0;i<count;i++) if (targetable(actor,i) && (unlocked[actor] || i!=targets[actor])) {
         Vec4 p, own;
@@ -689,10 +689,10 @@ static void ordered_target(s32 actor) {
     s32 ids[TAG_TEAM_CAPACITY],n=0,i,j,v=0,order=Port_TagOption(TAG_OPT_TARGET_ORDER);
     f32 keys[TAG_TEAM_CAPACITY];Mtx44 *m;
     Vec4 own=((BtlMovePose *)&BtlChar_Get(actor)->pose)->pos;
-    extern BtlCamView *BtlCam_GetNativeView(s32);
+    extern BtlCamView *BtlCam_GetTargetView(s32);
     if(unlocked[actor]) {relock(actor);return;}
     for(i=0;i<viewCount;i++)if(TagTeam_ViewActor(i)==actor){v=i;break;}
-    m=&BtlCam_GetNativeView(v)->view.world2screen;
+    m=&BtlCam_GetTargetView(v)->view.world2screen;
     for(i=0;i<count;i++)if(targetable(actor,i)) {
         Vec4 p=((BtlMovePose *)&BtlChar_Get(i)->pose)->pos;
         f32 w=p.x*m->m[0][3]+p.y*m->m[1][3]+p.z*m->m[2][3]+m->m[3][3];
@@ -758,13 +758,13 @@ void TagTeam_TargetInput(s32 actor,s32 held) {
 }
 
 static void aim_target(s32 actor,s32 direction) {
-    extern BtlCamView *BtlCam_GetNativeView(s32);
+    extern BtlCamView *BtlCam_GetTargetView(s32);
     extern void BtlCharApi_GetPos(s32,Vec4 *);
     s32 i,v=0,best=-1,rect[4];
     f32 score=1.0e30f,bx=0,by=0;
     Vec4 p;Mtx44 *m;
     for(i=0;i<viewCount;i++) if((TagNet_Active()||TagTeam_ViewVisible(i))&&TagTeam_ViewActor(i)==actor) {v=i;break;}
-    m=&BtlCam_GetNativeView(v)->view.world2screen;TagTeam_ViewRect(v,rect);
+    m=&BtlCam_GetTargetView(v)->view.world2screen;TagTeam_ViewRect(v,rect);
     /* Project into this player's actual viewport. All four directions use
        screen space, including elevated targets and rotated cameras. */
     for(i=-1;i<count;i++) {

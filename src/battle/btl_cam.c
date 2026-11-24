@@ -22,6 +22,11 @@
 #endif
 
 static BtlCamView nativeViews[TAG_TEAM_CAPACITY];
+#ifdef PORT
+/* Gameplay targeting must not consume a client's scripted/rendered camera.
+   Keep this in rollback memory, alongside the native views. */
+static BtlCamView targetViews[TAG_TEAM_CAPACITY];
+#endif
 static s32 nativeSharedActor = -1;
 static BtlCamView *battle_view(s32 i) { return TagTeam_Active() ? &nativeViews[i] : &gBtlCam->views[i]; }
 /* Script zoom changes the projection without changing the native lens field.
@@ -370,6 +375,9 @@ void BtlCam_InitViews(void) {
 
     if (TagTeam_Active()) {
         memset(nativeViews, 0, sizeof(nativeViews));
+#ifdef PORT
+        memset(targetViews, 0, sizeof(targetViews));
+#endif
         for (i = 0; i < TagTeam_CameraCount(); i++) {
             nativeViews[i].index = i;
             native_layout(&nativeViews[i], TagTeam_CameraCount() > 1);
@@ -568,8 +576,24 @@ void BtlCam_UpdateView(s32 side) {
     }
     BtlCharApi_GetCamPose(objId, &view->pos, &view->rot);
 #ifdef PORT
+    if (TagNet_Active()) {
+        BtlCamView *target = &targetViews[view->index];
+        View *saved = gBtlCamView;
+        *target = *view;
+        View_InitLayout(&target->view, VIEW_LAYOUT_FULL);
+        /* Canonical 4:3 projection: aspect, zoom, camera scripts and render
+           history are local preferences, not synchronized gameplay inputs. */
+        target->view.aspect = 0.0f;
+        target->view.aspectX = 6.0f / 7.0f;
+        target->view.aspectY = 1.0f;
+        View_BuildProjection(&target->view);
+        View_SetTransform(&target->view.world2view, &target->view.world2view2,
+                          &target->pos, &target->rot);
+        View_UpdateMatrices(&target->view, &target->pos);
+        gBtlCamView = saved;
+    }
     {   /* PC only: the script mods' on_camera (port/src/mods_game.c, docs/port/mods.md) may change this view's copy of
-           the pose, which is only drawn: nothing of the fight reads it back. */
+           the pose. Network targeting uses the unmodified copy above. */
         extern void Port_ModsCamera(s32 side, s32 objId, s32 pos, s32 rot); /* (addresses in game memory) */
         extern s32 Port_ModsCamZoom(s32 side);
         extern s32 Port_ModsCamCollide(s32 side);
@@ -1064,6 +1088,12 @@ s32 TagTeam_CurrentViewActor(void) {
 }
 
 BtlCamView *BtlCam_GetNativeView(s32 i) { return battle_view(i); }
+BtlCamView *BtlCam_GetTargetView(s32 i) {
+#ifdef PORT
+    if (TagNet_Active()) return &targetViews[i];
+#endif
+    return battle_view(i);
+}
 
 #ifdef PORT
 /* The network presents one camera without changing the canonical player cameras
