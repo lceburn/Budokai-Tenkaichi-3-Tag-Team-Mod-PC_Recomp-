@@ -1,0 +1,13 @@
+# Deterministic loading in native network matches
+
+The offline fast queue processes up to 32 ready steps, but yields after 2 ms of real elapsed time. Port_FastFileQueue excluded legacy Port_NetSession, while native TagNet rooms could still enter that path. File_UpdateRequests drives character/animation load jobs whose completion changes live fighter state. Different local read times therefore allowed different simulation-tick completion.
+
+Reproduction on the published Beta 23 Windows build used real host/client processes, CPU teammates, separate data roots and paired diagnostics. Only guest file reads were delayed by 3 ms. Builds, settings and captured inputs matched. Gauntlet showed an incoming enemy reset alive on one copy while still KO on the other (first retained difference 2252). Team Battle showed differing attack readiness (capture 7011) and retained fighter/random-state differences from 7014. An earlier Gauntlet movement-injection fixture was excluded from root-cause attribution.
+
+Controls used the same binary, read delay and input sequence, with the existing fixed-step loading switch on both clients. Gauntlet completed all three Quick Test waves and returned to practice. 3v3 Team Battle completed 10,800 confirmed frames. Neither control desynced. These comparisons isolate the loading defect; they do not establish that every networking issue is resolved.
+
+The correction also excludes active native TagNet gameplay from the offline fast queue. Offline loading and legacy session policy remain unchanged. Network diagnostics and crash-repair implementations are not altered. The test runner now gives each client a separate report directory and can stop after a paired natural mismatch without calling that a passing match.
+
+The separate practice visual-stutter issue was isolated by the user to automatic frame skipping: with it off and F1 closed, FPS and motion recover. This update does not change that setting or renderer behavior.
+
+The rebuilt Windows candidate passed the same 10,800-frame 3v3 test with slower guest reads and no legacy-loading override. It also completed all three Gauntlet Quick Test waves with shared custom fighters, returned to practice, and passed a separate shared-transformation round trip plus normal session cleanup. Both saved libraries remained byte-identical. Both signed archives and an isolated upgrade passed, preserving all 85 checked files. These concurrent tests exercised asymmetric rendering and resource work; they are determinism checks rather than performance benchmarks. Both computers must update because the shared build identity changes.

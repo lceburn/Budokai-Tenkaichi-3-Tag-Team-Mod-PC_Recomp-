@@ -10,10 +10,11 @@ void Port_ModelRequestTrace(int actor,int kind,int chara,int costume,int variant
         fprintf(stderr,"model load: actor=%d kind=%d character=%d costume=%d variant=%d\n",actor,kind,chara,costume,variant);
 }
 int Port_FastFileQueue(void) {
-    extern int Port_NetSession(void);
-    /* The legacy step cadence remains available for comparison, and for the
-       upstream network protocol whose simulation includes loader states. */
-    return getenv("BT3_TAG_TEAM") != NULL && !Port_NetSession() &&
+    extern int Port_NetSession(void),TagNet_Active(void);
+    /* The offline fast queue yields after a wall-clock budget. Both legacy
+       sessions and native tag matches include loader states in the simulation,
+       so they need the fixed step cadence regardless of local read speed. */
+    return getenv("BT3_TAG_TEAM") != NULL && !Port_NetSession() && !TagNet_Active() &&
            getenv("BT3_TAG_LEGACY_LOADING") == NULL;
 }
 void Port_LoadTrace(int point) {

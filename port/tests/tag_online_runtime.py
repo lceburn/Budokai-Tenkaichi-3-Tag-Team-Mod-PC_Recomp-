@@ -76,6 +76,8 @@ p.add_argument('--bad-teams', action='store_true', help='The host sends its gues
 p.add_argument('--team-differ', metavar='CLIENT:SLOT', help='This client alone puts the fighter of that setup slot on another team; the match must stop with a mismatch report naming the team')
 p.add_argument('--host-pad', help='Scripted pad of a rendered host (frame:button,...); the host then chooses the mode in its menu itself and never readies')
 p.add_argument('--shots', action='append', default=[], metavar='CLIENT:FRAME,FRAME,...', help='Render this client and save its window at these frames; the run ends when the last one exists')
+p.add_argument('--capture-desync',action='store_true',help='Stop once both clients save a natural mismatch; exit 2 to distinguish reproduction from a pass')
+p.add_argument('--client-env',action='append',default=[],metavar='CLIENT:NAME=VALUE',help='Diagnostic environment override for one isolated test client')
 p.add_argument('--env', action='append', default=[], metavar='NAME=VALUE', help='One more environment variable for every client (diagnostic switches)')
 a=p.parse_args()
 differ=a.differ or a.team_differ
@@ -130,7 +132,7 @@ if a.custom_transform:
 if a.custom_exit_after:
     assert a.custom and a.custom_exit_after>0
     env['BT3_TAG_CUSTOM_TEST_EXIT_AFTER']=str(a.custom_exit_after)
-jobs=[];completed=False;disconnected=False;disconnect_at=None;rejoined=False
+jobs=[];completed=False;captured_desync=False;disconnected=False;disconnect_at=None;rejoined=False
 # Members that are expected to drop out while the others keep playing.
 victims={a.freeze,a.hold_start,'guest' if a.party and a.load_delay else None}-{None}
 watched=bool(a.freeze or a.join_in_setup or (a.party and a.load_delay))
@@ -143,7 +145,6 @@ STATS=re.compile(r'frame (\d+), confirmed \d+, players \d+, rewinds \d+, speed \
 
 def settings_file(name):
     # A mismatch report is written beside the settings file: then every client needs a folder of its own.
-    if not differ and not a.teams:return out/(name+'.settings')
     (out/('home-'+name)).mkdir(exist_ok=True)
     return out/('home-'+name)/'settings.txt'
 
@@ -211,6 +212,10 @@ def spawn(name):
     for item in a.client_data:
         client,path=item.split('=',1)
         if client==name:e['BT3_DATA']=str(pathlib.Path(path).resolve())
+    for item in a.client_env:
+        client,setting=item.split(':',1)
+        if client==name:
+            key,value=setting.split('=',1);e[key]=value
     for item in a.custom:
         client,index=item.split(':',1)
         if client==name:e['BT3_TAG_CUSTOM_TEST_INDEX']=str(int(index))
@@ -318,6 +323,10 @@ try:
                     note();completed=True;final={name:log.read_text(errors='replace') for name,_,_,log in jobs};break
             if others and all(proc.poll() is not None for _,proc in others):note();break
             time.sleep(.1);continue
+        if a.capture_desync:
+            contents=[log.read_text(errors='replace') for _,_,_,log in jobs]
+            if all('went out of sync' in content and 'mismatch report written to' in content and '(both copies)' in content for content in contents):
+                captured_desync=True;completed=True;break
         if a.rejoin and not rejoined and all((name=='host' or 'PASS 2510' in log.read_text(errors='replace')) and 'frame 2400,' in log.read_text(errors='replace') for name,_,_,log in jobs):
             next(proc for name,proc,_,_ in jobs if name=='guest').terminate()
             until=time.time()+10
@@ -397,6 +406,10 @@ finally:
         line=summary(name,log.read_text(errors='replace'))
         if line:print(line,flush=True)
         if used.get(name,(None,0))[0] is not None:print('CPU %-8s %.1f s of processor time in %.1f s'%(name,used[name][0],used[name][1]),flush=True)
+
+if captured_desync:
+    print('REPRODUCED: paired desync reports retained separately; this is not a passing match.',flush=True)
+    sys.exit(2)
 
 # A zero exit alone is not a pass: a cleanly reported disconnect/desync also exits zero.
 plans={};winners={}
