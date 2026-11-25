@@ -585,6 +585,9 @@ s32 PauseMenu_Update(s32 pad, s32 which) {
 
 /* Draws the menu when it is shown. */
 void PauseMenu_Draw(void) {
+#ifdef PORT
+    {extern s32 PortSpectator_PhotoActive(void);if(PortSpectator_PhotoActive())return;}
+#endif
     {extern s32 TagChallenge_ResultVisible(void);if(TagChallenge_ResultVisible())return;}
 #ifdef PORT
     {

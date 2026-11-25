@@ -974,6 +974,16 @@ void PortInput_SpectatorSlot(int player,float *axes) {
     if(player<0 || player>=4)return;
     if(gPortOverlayOpen || gPortInputCapture ||
        gPortChatTyping || sKeySwallow)return;
+    /* Opt-in game harness: move a paused spectator camera without requiring
+       a physical controller or stealing the developer's foreground window.
+       Camera activation and overlay capture still follow production rules. */
+    if(player==0) {
+        static int first=-1,last;
+        if(first<0){const char *v=getenv("BT3_SPEC_TEST_MOVE");first=last=0;if(v)sscanf(v,"%d:%d",&first,&last);}
+        if(first>0 && gGsFrame>=(unsigned)first && gGsFrame<=(unsigned)last) {
+            axes[0]=1;axes[3]=.3f;return;
+        }
+    }
     window=GsDraw_Window();
     if(!window || !(SDL_GetWindowFlags(window)&SDL_WINDOW_INPUT_FOCUS))return;
     keys=SDL_GetKeyboardState(NULL);

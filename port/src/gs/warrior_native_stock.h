@@ -61,15 +61,15 @@ inline bool experimental_body(const Document &recipe) {
     }
     return count>=1;
 }
-inline bool recipe_colours(const Document &recipe,std::vector<WarriorNativeMaterials::Colour> &out) {
+inline bool recipe_colours(const Document &recipe,std::vector<WarriorNativeMaterials::Colour> &out,const std::string &field="colour") {
     std::istringstream lines(recipe.raw);std::string line;std::set<uint32_t> keys;
     while(std::getline(lines,line)) {
         if(!line.empty() && line.back()=='\r')line.pop_back();
-        if(line.compare(0,7,"colour="))continue;
-        std::istringstream values(line.substr(7));uint64_t key;int r,g,b;char a,c,d,tail;
+        auto prefix=field+"=";if(line.compare(0,prefix.size(),prefix))continue;
+        std::istringstream values(line.substr(prefix.size()));uint64_t key;int r,g,b;char a,c,d,tail;
         if(!(values>>key>>a>>r>>c>>g>>d>>b) || values.get(tail) || a!=',' || c!=',' || d!=',' ||
            key>UINT32_MAX || (key&0xe000001f)!=0x40000010 || !keys.insert(uint32_t(key)).second ||
-           r<0 || r>255 || g<0 || g>255 || b<0 || b>255 || out.size()>=48)return false;
+           r<0 || r>255 || g<0 || g>255 || b<0 || b>255 || out.size()>=512)return false;
         out.push_back({uint32_t(key),r,g,b});
     }
     return true;
@@ -89,13 +89,13 @@ inline bool supports(const Document &recipe) {
         auto key=line.substr(0,equals);
         auto category=WarriorNativeMotionGroups::group(key);
         if(category==2 || (category>=0 && line.substr(equals+1).find(", costume ")!=std::string::npos))return false;
-        if(key!="body" && key!="moves" && key!="voice" && key!="style" && key!="colour" &&
+        if(key!="body" && key!="moves" && key!="voice" && key!="style" && key!="colour" && key!="damagecolour" &&
            key!="hair" && key!="head" && key!="face" && key!="hands" && !body_slot(key) && category<0 && !WarriorNativeAttacks::key(key) && !WarriorNativeEffects::key(key) && !WarriorNativeBuild::metadata_key(key) && !WarriorNativeForms::key(key))return false;
         auto value=line.substr(equals+1);
         if(!WarriorRecipe::value_ok(value) || (key.size()>=4 && key.compare(key.size()-4,4,"name")==0 && key!="name" && value.size()>31))return false;
     }
-    std::string error;std::vector<WarriorNativeMaterials::Colour> colours;
-    return recipe.valid(error) && recipe_colours(recipe,colours);
+    std::string error;std::vector<WarriorNativeMaterials::Colour> colours,damaged;
+    return recipe.valid(error) && recipe_colours(recipe,colours) && recipe_colours(recipe,damaged,"damagecolour");
 }
 inline bool valid_model(const WarriorNativePack::Pack &pack) {
     return pack.entries.size()>=252 && !pack.entries[1].empty() && !pack.entries[2].empty() &&
@@ -146,7 +146,8 @@ inline bool stock_animation_scale(WarriorNativePack::Pack &model,const WarriorNa
     return WarriorNativeMotionGroups::scales(model,bodyHeight,movesHeight,outfitHeight,groups,error,sameBodyMoves,attackScales);
 }
 inline bool generate(const fs::path &root,const Document &recipe,const fs::path &output,std::string &error,
-                     const std::set<std::string> &family={},const std::string &self={}) {
+                     const std::set<std::string> &family={},const std::string &self={},
+                     std::vector<WarriorNativeMaterials::Material> *catalogueOnly=nullptr) {
     if(!supports(recipe)){error="This stock recipe needs an assembly path that is not implemented yet.";return false;}
     std::vector<std::string> formRecords(4);
     for(unsigned i=0;i<4;i++)if(!WarriorNativeForms::record(recipe.get("form"+std::to_string(i+1)),i,family,self,formRecords[i],error))return false;
@@ -156,8 +157,8 @@ inline bool generate(const fs::path &root,const Document &recipe,const fs::path 
     std::vector<WarriorNativeMotionGroups::Selection> motionGroups;
     std::vector<WarriorNativeAttacks::Selection> attacks;
     std::vector<WarriorNativeAttacks::CameraSelection> cameras;
-    std::vector<WarriorNativeMaterials::Colour> colours;
-    if(!recipe_colours(recipe,colours)){error="Invalid native material colours.";return false;}
+    std::vector<WarriorNativeMaterials::Colour> colours,damageColours;
+    if(!recipe_colours(recipe,colours) || !recipe_colours(recipe,damageColours,"damagecolour")){error="Invalid native material colours.";return false;}
     if(!WarriorNativeMotionGroups::prepare(root,recipe,motionGroups,error))return false;
     if(!WarriorNativeAttacks::prepare(root,recipe,attacks,error))return false;
     if(!WarriorNativeAttacks::prepare_cameras(root,recipe,cameras,error))return false;
@@ -189,7 +190,7 @@ inline bool generate(const fs::path &root,const Document &recipe,const fs::path 
         bodyParts.emplace_back(body_slot(key),std::move(bodyPart));
     }
     std::error_code ec;
-    if(fs::exists(output,ec) || ec || !fs::create_directories(output/"pzs3us1",ec) || ec) {
+    if(!catalogueOnly && (fs::exists(output,ec) || ec || !fs::create_directories(output/"pzs3us1",ec) || ec)) {
         error="Could not prepare a new native warrior folder.";return false;
     }
     std::vector<std::string> intact,damaged;std::vector<WarriorNativeMaterials::Material> materials;
@@ -199,7 +200,8 @@ inline bool generate(const fs::path &root,const Document &recipe,const fs::path 
         if(!WarriorNativeSources::asset(root,1423+body.id*10+outfit,raw,error))return false;
         if(!WarriorNativePack::decode(raw,model,error) || !valid_model(model)) {gap=true;continue;}
         if(gap){error="Non-contiguous native stock costumes are not supported yet.";return false;}
-        auto original=model;
+        auto original=model;WarriorNativePack::Pack normalModel;
+        std::vector<WarriorNativeMaterials::Material> normalMaterials;
         for(int damage=0;damage<2;damage++) {
             if(damage) {
                 if(!WarriorNativeSources::asset(root,1427+body.id*10+outfit,raw,error))return false;
@@ -256,8 +258,17 @@ inline bool generate(const fs::path &root,const Document &recipe,const fs::path 
                 model=std::move(assembled);
             }
             if(!WarriorNativePack::copy_entries(model,voice.pack,53,252,error) || !WarriorNativePack::copy_style(model,style.pack,error))return false;
-            if(!WarriorNativeMaterials::recolour(model,colours,error))return false;
-            if(!outfit && !damage && !WarriorNativeMaterials::catalogue(model,materials,error))return false;
+            std::vector<WarriorNativeMaterials::Material> current;
+            if(!WarriorNativeMaterials::catalogue(model,current,error))return false;
+            if(!damage){normalModel=model;normalMaterials=current;}
+            else if(!WarriorNativeMaterials::link_damage(normalModel,model,normalMaterials,current,error))return false;
+            for(auto m:current) {
+                m.damaged=damage;m.costume=outfit;
+                if(std::none_of(materials.begin(),materials.end(),[&](const WarriorNativeMaterials::Material &n){return n.key==m.key && n.damaged==damage;}))materials.push_back(m);
+            }
+            if(catalogueOnly)continue;
+            auto changes=WarriorNativeMaterials::variant_colours(current,colours,damageColours,damage!=0);
+            if(!WarriorNativeMaterials::recolour(model,changes,error))return false;
             std::string packed;
             if(!WarriorNativePack::encode(model,packed,error) || ((packed.size()+2047)&~size_t(2047))>WarriorNativePack::ModelLimit) {
                 error="The native stock model exceeds the BT4 model buffer.";return false;
@@ -267,6 +278,7 @@ inline bool generate(const fs::path &root,const Document &recipe,const fs::path 
             (damage?damaged:intact).push_back(name);
         }
     }
+    if(catalogueOnly){*catalogueOnly=std::move(materials);error.clear();return true;}
     if(intact.empty() || intact.size()!=damaged.size()){error="The stock source has no complete model family.";return false;}
     std::string built="#warrior 47\n";
     for(const auto &name:intact)built+=name+"\n";for(const auto &name:damaged)built+=name+"\n";

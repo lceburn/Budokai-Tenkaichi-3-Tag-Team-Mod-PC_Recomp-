@@ -15,6 +15,20 @@ static SpecCamera sCamera;
 static int sReset,sSeenReset,sCount=2,sInputActive,sLastZoom=100,sZoomHeld;
 static Uint64 sLastTick;
 static int sManual,sBattleActive,sSelectHeld;
+static int sPhoto,sPhotoPaused,sPhotoL1,sPhotoPreviousMode,sPhotoPreviousManual,sPhotoRestore;
+int PortSpectator_PhotoActive(void) { return sPhoto && sPhotoPaused && !gPortResim; }
+int PortSpectator_PhotoViewRefresh(void) { return !gPortResim && (sPhoto || sPhotoRestore); }
+void PortSpectator_PhotoFrameDone(void) { if(!gPortResim && sPhotoRestore)sPhotoRestore--; }
+static void photo_exit(void) {
+    if(!sPhoto)return;
+    sPhoto=0;sPhotoRestore=2;PortSpectator_SetMode(sPhotoPreviousMode);
+    __atomic_store_n(&sManual,sPhotoPreviousManual,__ATOMIC_RELAXED);
+}
+void PortSpectator_PhotoPause(int frozen) {
+    if(gPortResim)return;
+    sPhotoPaused=frozen!=0;
+    if(!sPhotoPaused || !Port_Setting("spectator_photo_mode",0))photo_exit();
+}
 static SpecCamera sViewCamera[15];
 static Uint64 sViewLastTick[15];
 static int sViewReset[15],sAutoInput[4];
@@ -33,6 +47,18 @@ unsigned PortSpectator_InputButtons(int player,unsigned buttons) {
     int enabled,held;
     if(player!=0 || gPortResim)return buttons;
     held=(buttons&1u)!=0;
+    if(sPhotoPaused && Port_Setting("spectator_photo_mode",0) && (buttons&0x400u) && !sPhotoL1 && !gPortOverlayOpen) {
+        if(sPhoto)photo_exit();
+        else {
+            sPhotoPreviousMode=PortSpectator_Mode();sPhotoPreviousManual=PortSpectator_Manual();sPhoto=1;
+            PortSpectator_SetMode(sPhotoPreviousMode?sPhotoPreviousMode:1);
+        }
+    }
+    sPhotoL1=(buttons&0x400u)!=0;
+    if(PortSpectator_PhotoActive()) {
+        if(held && !sSelectHeld && !gPortOverlayOpen)PortSpectator_SetMode(TagCamera_SelectNext(PortSpectator_Mode()));
+        sSelectHeld=held;return buttons&~1u;
+    }
     enabled=__atomic_load_n(&sBattleActive,__ATOMIC_RELAXED) && Port_Setting("spectator_select_cycle",0);
     if(enabled && held && !sSelectHeld && !gPortOverlayOpen)PortSpectator_SetMode(TagCamera_SelectNext(PortSpectator_Mode()));
     sSelectHeld=held;
@@ -48,6 +74,7 @@ int PortSpectator_Zoom(void) { return (int)spec_clamp(Port_Setting("spectator_zo
 void PortSpectator_SetZoom(int zoom) { Port_SettingSave("spectator_zoom",(int)spec_clamp(zoom,100,300));Port_SettingsWrite(); }
 void PortSpectator_ResetCamera(void) { PortSpectator_SetZoom(100);__atomic_add_fetch(&sReset,1,__ATOMIC_RELAXED); }
 void PortSpectator_EndBattle(void) {
+    sPhoto=sPhotoPaused=sPhotoL1=sPhotoRestore=0;
     sCamera.live=0;sLastTick=0;__atomic_store_n(&sInputActive,0,__ATOMIC_RELAXED);
     memset(sViewCamera,0,sizeof(sViewCamera));memset(sViewLastTick,0,sizeof(sViewLastTick));PortSpectator_ClearViews();
     __atomic_store_n(&sManual,0,__ATOMIC_RELAXED);PortSpectator_BattleActive(0);sSelectHeld=0;
@@ -55,8 +82,8 @@ void PortSpectator_EndBattle(void) {
     __atomic_add_fetch(&sReset,1,__ATOMIC_RELAXED);
 }
 void PortSpectator_SetInputActive(int active) { __atomic_store_n(&sInputActive,active!=0,__ATOMIC_RELAXED); }
-int PortSpectator_ConsumesInput(void) { return __atomic_load_n(&sInputActive,__ATOMIC_RELAXED) && PortSpectator_Mode()!=0; }
-unsigned PortSpectator_FilterButtons(unsigned buttons) { return PortSpectator_ConsumesInput()?buttons&0x0009u:buttons; }
+int PortSpectator_ConsumesInput(void) { return PortSpectator_PhotoActive() || (__atomic_load_n(&sInputActive,__ATOMIC_RELAXED) && PortSpectator_Mode()!=0); }
+unsigned PortSpectator_FilterButtons(unsigned buttons) { return PortSpectator_PhotoActive()?buttons&0x0008u:PortSpectator_ConsumesInput()?buttons&0x0009u:buttons; }
 void PortSpectator_ClearViews(void) { int i;for(i=0;i<4;i++)__atomic_store_n(&sAutoInput[i],0,__ATOMIC_RELAXED); }
 void PortSpectator_StopView(int view) { if(view>=0 && view<15){sViewCamera[view].live=0;sViewLastTick[view]=0;} }
 void PortSpectator_ViewInput(int player,int active,unsigned button) {

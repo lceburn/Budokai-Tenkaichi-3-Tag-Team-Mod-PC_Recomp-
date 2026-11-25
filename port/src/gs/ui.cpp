@@ -2670,6 +2670,11 @@ static void meter_draw(void) {
 // The name of an added stage or song as text, in the rectangle the menu gives (the strip images' place): cream
 // letters with a dark outline, as tall as the rectangle allows, centred for a stage and from the left for a song.
 static void spectator_tab(void) {
+    bool photo=Port_Setting("spectator_photo_mode",0)!=0;
+    if(ImGui::Checkbox("Photo Mode: L1 while paused",&photo)) {
+        Port_SettingSave("spectator_photo_mode",photo);Port_SettingsWrite();
+    }
+    ImGui::SetItemTooltip("During a frozen offline pause, L1 hides/restores the pause menu. Use spectator camera controls and Select to cycle views. Start resumes. Online matches continue while their menu is open.");
     ImGui::TextWrapped("After defeat, your configured target/spectator button cycles character views, Free camera, Fight overview, then the first character. Return to a character view before taking over a teammate.");
     bool cycle=Port_Setting("spectator_select_cycle",0)!=0;
     if(ImGui::Checkbox("Use Select to cycle camera",&cycle)) {

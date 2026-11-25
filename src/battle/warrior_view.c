@@ -18,6 +18,7 @@ extern s32 Port_PageAspectMilli(void);
 extern f32 cosf(f32),sinf(f32),sqrtf(f32);
 extern struct WarriorViewStage {s32 unk[2],flags;} *gBtlStage;
 static s32 opened,shown=-1;
+static s32 shownCostume=-1,shownDamage=-1,wantedCostume,wantedDamage;
 static f32 yaw=3.59f,zoom=1;
 
 void WarriorView_Open(void) {
@@ -28,6 +29,9 @@ void WarriorView_Clear(void) {
     if(opened)ChrView_Hide();
     shown=-1;
 }
+void WarriorView_SetVariant(s32 costume,s32 damaged) {
+    wantedCostume=(u32)costume<4?costume:0;wantedDamage=damaged!=0;
+}
 void WarriorView_Close(void) {
     if(!opened)return;
     ChrView_Hide();ChrView_Term();opened=0;shown=-1;
@@ -37,8 +41,9 @@ void WarriorView_Draw(s32 chara,f32 cx,f32 feet,f32 height,s32 controls) {
     if(!opened)return;
     viewer=ChrView_Get();
     if(chara<0 || !PortGame_IsCharacter(chara)) {if(shown>=0)WarriorView_Clear();return;}
-    if(shown!=chara) {
-        ChrView_Hide();ChrView_Show(chara,0,0);shown=chara;zoom=1;yaw=3.59f;
+    if(shown!=chara || shownCostume!=wantedCostume || shownDamage!=wantedDamage) {
+        ChrView_Hide();ChrView_Show(chara,wantedCostume,wantedDamage);
+        shown=chara;shownCostume=wantedCostume;shownDamage=wantedDamage;zoom=1;yaw=3.59f;
     }
     if(ChrView_IsLoading() || !ChrView_IsVisible() || !viewer->cur)return;
     info=ChrView_GetCharaInfo(chara);if(!info)return;

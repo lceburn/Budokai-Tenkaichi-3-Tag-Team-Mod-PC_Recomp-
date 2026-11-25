@@ -1,13 +1,15 @@
 // Read material identities and displayed colours directly from model uploads.
 #pragma once
 #include "warrior_native_pack.h"
+#include "warrior_native_parts.h"
+#include "warrior_native_texture_bindings.h"
 #include <algorithm>
 #include <map>
 #include <set>
 #include <cmath>
 
 namespace WarriorNativeMaterials {
-struct Material {uint32_t key;int texture,r=255,g=255,b=255;};
+struct Material {uint32_t key;int texture,r=255,g=255,b=255;int damaged=0,costume=0;uint32_t normalKey=0;};
 static const int block[4][8]={{0,1,4,5,16,17,20,21},{2,3,6,7,18,19,22,23},{8,9,12,13,24,25,28,29},{10,11,14,15,26,27,30,31}};
 static const int col[8][8]={{0,1,4,5,8,9,12,13},{2,3,6,7,10,11,14,15},{16,17,20,21,24,25,28,29},{18,19,22,23,26,27,30,31},{32,33,36,37,40,41,44,45},{34,35,38,39,42,43,46,47},{48,49,52,53,56,57,60,61},{50,51,54,55,58,59,62,63}};
 static const int col8[4][16]={{0,4,16,20,32,36,48,52,2,6,18,22,34,38,50,54},{8,12,24,28,40,44,56,60,10,14,26,30,42,46,58,62},{33,37,49,53,1,5,17,21,35,39,51,55,3,7,19,23},{41,45,57,61,9,13,25,29,43,47,59,63,11,15,27,31}};
@@ -86,11 +88,69 @@ inline bool catalogue(const WarriorNativePack::Pack &model,std::vector<Material>
     result=std::move(found);return true;
 }
 inline std::string table(const std::vector<Material> &materials) {
-    std::string text="# BT4 material colours v1\n";
-    for(const auto &m:materials)text+=std::to_string(m.key)+"\t"+std::to_string(m.texture)+"\t"+std::to_string(m.r)+"\t"+std::to_string(m.g)+"\t"+std::to_string(m.b)+"\n";
+    std::string text="# BT4 material colours v2 (unmodified donor defaults)\n";
+    for(const auto &m:materials)text+=std::to_string(m.key)+"\t"+std::to_string(m.texture)+"\t"+std::to_string(m.r)+"\t"+std::to_string(m.g)+"\t"+std::to_string(m.b)+"\t"+std::to_string(m.damaged)+"\t"+std::to_string(m.costume)+"\t"+std::to_string(m.normalKey)+"\n";
     return text;
 }
 struct Colour {uint32_t key;int r,g,b;};
+// Match within the assembled mesh's skeletal records, never by RGB alone.
+// A different donor part has different occupied records even if its color is
+// identical. Ambiguous materials remain available for manual damaged edits.
+inline bool usage(const WarriorNativePack::Pack &model,std::map<uint32_t,std::set<unsigned>> &out,std::string &error) {
+    std::vector<WarriorNativeParts::Record> rows;
+    std::vector<WarriorNativeTextureBindings::Texture> textures;
+    if(model.entries.size()<12 || !WarriorNativeParts::records(model.entries[2],rows,error) ||
+       !WarriorNativeTextureBindings::textures(model.entries[11],textures,error))return false;
+    const auto &mesh=model.entries[2];
+    for(const auto &row:rows) {
+        if(row.size<96)continue;
+        size_t end=row.offset+row.size;
+        for(size_t dma=row.offset+96;dma+16<=end;) {
+            auto tag=WarriorNativePack::word(mesh,dma);size_t bytes=(tag&65535)*16;
+            if(bytes>end-dma-16){error="Truncated material usage packet.";return false;}
+            size_t words=bytes/4+2;
+            for(size_t j=0;j+23<=words;) {
+                size_t at=dma+8+j*4;if(WarriorNativePack::word(mesh,at)!=0x6c058000)break;
+                size_t n=WarriorNativePack::word(mesh,at+52)&0x7fff;
+                if(n>(words-j-23)/12){error="Invalid material usage vertices.";return false;}
+                WarriorNativeTextureBindings::Texture t;
+                if(n>=3 && WarriorNativeTextureBindings::material(textures,WarriorNativePack::word(mesh,at+20)&0x3fff,
+                   (WarriorNativePack::word(mesh,at+24)>>5)&0x3fff,t))
+                    out[identity(t.pixels,0,t.pixels.size())].insert(row.node);
+                j+=23+n*12;
+            }
+            dma+=16+bytes;if((tag&0xf0000000)==0x60000000)break;
+        }
+    }
+    return true;
+}
+inline bool link_damage(const WarriorNativePack::Pack &normal,const WarriorNativePack::Pack &damage,
+                        const std::vector<Material> &from,std::vector<Material> &to,std::string &error) {
+    std::map<uint32_t,std::set<unsigned>> a,b;
+    if(!usage(normal,a,error) || !usage(damage,b,error))return false;
+    for(auto &m:to) {
+        unsigned best=0;bool tie=false;uint32_t key=0;
+        for(const auto &n:from) {
+            if(n.key==m.key){key=n.key;tie=false;break;}
+            // Color similarity only corroborates structural ownership.
+            if(std::abs(n.r-m.r)>64 || std::abs(n.g-m.g)>64 || std::abs(n.b-m.b)>64)continue;
+            unsigned shared=0;
+            for(auto node:b[m.key])if(a[n.key].count(node))shared++;
+            if(shared>best){best=shared;key=n.key;tie=false;}
+            else if(shared && shared==best)tie=true;
+        }
+        m.normalKey=tie?0:key;
+    }
+    return true;
+}
+inline std::vector<Colour> variant_colours(const std::vector<Material> &materials,const std::vector<Colour> &normal,
+                                          const std::vector<Colour> &damaged,bool damage) {
+    std::map<uint32_t,Colour> result;
+    for(const auto &m:materials)for(const auto &c:normal)
+        if(c.key==m.key || (damage && m.normalKey==c.key))result[m.key]={m.key,c.r,c.g,c.b};
+    if(damage)for(const auto &m:materials)for(const auto &c:damaged)if(c.key==m.key)result[m.key]=c;
+    std::vector<Colour> out;for(const auto &p:result)out.push_back(p.second);return out;
+}
 struct Hsv {float h,s,v;};
 inline Hsv hsv(int r,int g,int b) {
     float red=r/255.f,green=g/255.f,blue=b/255.f;

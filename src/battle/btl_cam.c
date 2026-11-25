@@ -858,7 +858,7 @@ static s32 BtlCam_SpectatorView(BtlCamView *out,BtlCamView *native,s32 slot,s32 
     return 1;
 }
 static s32 BtlCam_Spectator(void) {
-    PortSpectator_SetInputActive(gBtlCam && !(Battle_GetWork()->flags&BATTLE_FLAG_PAUSE_MENU));
+    PortSpectator_SetInputActive(gBtlCam && (!(Battle_GetWork()->flags&BATTLE_FLAG_PAUSE_MENU) || PortSpectator_PhotoActive()));
     if(!gBtlCam || !BtlCam_SpectatorView(&spectatorView,gBtlCam->cur,-1,PortSpectator_Mode(),0,1))return 0;
     gBtlCam->cur=&spectatorView;View_Apply(&spectatorView.view,1);return 1;
 }
@@ -1237,6 +1237,7 @@ s32 PortSpectator_BeginDraw(void) {
 }
 void PortSpectator_EndDraw(void) {
     s32 v;
+    PortSpectator_PhotoFrameDone();
     if(!spectatorDrawing)return;
     for(v=0;v<4;v++)if(spectatorChanged&(1u<<v))*battle_view(v)=spectatorSavedViews[v];
     gBtlCam->cur=spectatorSavedCurrent;gBtlCamView=spectatorSavedMatrix;

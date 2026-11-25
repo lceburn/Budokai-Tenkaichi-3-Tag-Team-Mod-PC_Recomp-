@@ -28,12 +28,12 @@ extern "C" void WarriorView_Clear(void);
 
 namespace {
 using namespace WarriorRecipe;
-struct Surface {unsigned key;int texture,rgb[3];};
-struct Draft {std::string folder;fs::path source;Document original,edited;bool fresh=false;std::vector<Surface> colours;};
+struct Surface {unsigned key;int texture,rgb[3];int damaged=0,costume=0;unsigned normalKey=0;};
+struct Draft {std::string folder;fs::path source;Document original,edited;bool fresh=false,coloursOriginal=false;std::vector<Surface> colours;};
 struct Library {
     fs::path root;std::vector<Draft> entries;std::set<std::string> roster;
     std::vector<WarriorNativeSources::CatalogueEntry> donors;
-    int selected=-1,nativeResult=0;std::string status,enabled;SDL_Process *process=nullptr;
+    int colourDamage=0;int selected=-1,nativeResult=0;std::string status,enabled;SDL_Process *process=nullptr;
 } library;
 std::map<std::string,std::array<std::string,5>> attackNames;
 struct PreviewJob {
@@ -245,12 +245,16 @@ extern "C" int PortZwNative_Open() {
         std::string catalogue;
         if(read(entry.source/"native-colours.tsv",catalogue)) {
             std::istringstream lines(catalogue);std::string line;
-            while(std::getline(lines,line) && entry.colours.size()<48) {
+            entry.coloursOriginal=catalogue.find("# BT4 material colours v2")==0;
+            while(std::getline(lines,line) && entry.colours.size()<1024) {
                 Surface s;
                 if(std::sscanf(line.c_str(),"%u\t%d\t%d\t%d\t%d",&s.key,&s.texture,&s.rgb[0],&s.rgb[1],&s.rgb[2])==5 &&
                    (s.key&0xe000001f)==0x40000010 && s.texture>=0 && s.texture<128 &&
-                   s.rgb[0]>=0 && s.rgb[0]<=255 && s.rgb[1]>=0 && s.rgb[1]<=255 && s.rgb[2]>=0 && s.rgb[2]<=255)
+                   s.rgb[0]>=0 && s.rgb[0]<=255 && s.rgb[1]>=0 && s.rgb[1]<=255 && s.rgb[2]>=0 && s.rgb[2]<=255) {
+                    int damaged=0,costume=0;unsigned normalKey=0;
+                    if(std::sscanf(line.c_str(),"%*u\t%*d\t%*d\t%*d\t%*d\t%d\t%d\t%u",&damaged,&costume,&normalKey)==3 && damaged>=0 && damaged<=1 && costume>=0 && costume<4){s.damaged=damaged;s.costume=costume;s.normalKey=normalKey;}
                     entry.colours.push_back(s);
+                }
             }
         }
         l.entries.push_back(std::move(entry));
@@ -271,45 +275,80 @@ extern "C" int PortZwNative_Read(int field,uint32_t out,int capacity) {
 }
 extern "C" int PortZwNative_Status(uint32_t out,int capacity){return copy_out(library.status,out,capacity);}
 extern "C" int PortZwNative_Dirty(){for(auto &e:library.entries)if(e.fresh || e.edited.raw!=e.original.raw)return 1;return 0;}
+static Surface *colour_surface(int index) {
+    auto e=selected();if(!e || index<0)return nullptr;
+    for(auto &s:e->colours)if(s.damaged==library.colourDamage && !index--)return &s;
+    return nullptr;
+}
+extern "C" int PortZwNative_ColourRefresh() {
+    auto e=selected();if(!e || e->fresh)return 0;
+    if(!e->coloursOriginal) {
+        std::vector<WarriorNativeMaterials::Material> materials;
+        if(!WarriorNativeStock::generate(library.root,e->original,fs::path(),library.status,native_family(),e->folder,&materials))return 0;
+        e->colours.clear();
+        for(const auto &m:materials)e->colours.push_back({m.key,m.texture,{m.r,m.g,m.b},m.damaged,m.costume,m.normalKey});
+        e->coloursOriginal=true;
+    }
+    return 1;
+}
+extern "C" int PortZwNative_ColourMode(int damaged) {
+    library.colourDamage=damaged!=0;return library.colourDamage;
+}
 extern "C" int PortZwNative_ColourCount() {
     auto e=selected();if(!e || e->fresh)return 0;
-    // A changed mesh needs a build before its texture identities can be chosen.
-    for(int field=0;field<ZW_FIELD_COUNT;field++)if(field==ZW_BODY || zwFields[field].tab==1 ||
-        (field>=ZW_LOOK2 && field<=ZW_LOOK4))
+    for(int field=0;field<ZW_FIELD_COUNT;field++)if(field==ZW_BODY || zwFields[field].tab==1 || (field>=ZW_LOOK2 && field<=ZW_LOOK4))
         if(e->edited.get(zwFields[field].key)!=e->original.get(zwFields[field].key))return 0;
-    return int(e->colours.size());
+    int count=0;for(const auto &s:e->colours)if(s.damaged==library.colourDamage)count++;return count;
 }
 extern "C" int PortZwNative_ColourValue(int index,int channel) {
-    auto e=selected();if(!e || index<0 || index>=PortZwNative_ColourCount() || channel<0 || channel>3)return 0;
-    const auto &s=e->colours[index];if(channel==3)return s.texture;
-    std::istringstream lines(e->edited.raw);std::string line;
-    while(std::getline(lines,line)) {
-        unsigned key;int rgb[3];
-        if(std::sscanf(line.c_str(),"colour=%u,%d,%d,%d",&key,&rgb[0],&rgb[1],&rgb[2])==4 && key==s.key)
-            return std::max(0,std::min(255,rgb[channel]));
+    auto e=selected();auto s=colour_surface(index);
+    if(!e || !s || index>=PortZwNative_ColourCount() || channel<0 || channel>5)return 0;
+    if(channel==3)return s->texture;if(channel==4)return s->costume;if(channel==5)return s->damaged;
+    std::vector<WarriorNativeMaterials::Colour> values;
+    if(s->damaged) {
+        WarriorNativeStock::recipe_colours(e->edited,values,"damagecolour");
+        for(const auto &c:values)if(c.key==s->key)return channel==0?c.r:channel==1?c.g:c.b;
+        values.clear();
     }
-    return s.rgb[channel];
+    WarriorNativeStock::recipe_colours(e->edited,values);
+    for(const auto &c:values)if(c.key==s->key || (s->damaged && c.key==s->normalKey))return channel==0?c.r:channel==1?c.g:c.b;
+    return s->rgb[channel];
 }
-extern "C" int PortZwNative_ColourWrite(int index,int red,int green,int blue) {
-    auto e=selected();if(!e || library.process || index<0 || index>=PortZwNative_ColourCount() ||
-        red<0 || red>255 || green<0 || green>255 || blue<0 || blue>255)return 0;
-    auto key=e->colours[index].key;std::string output;bool changed=false;int count=0;
-    auto replacement="colour="+std::to_string(key)+","+std::to_string(red)+","+std::to_string(green)+","+std::to_string(blue);
+static int colour_edit(int index,int red,int green,int blue,bool reset) {
+    auto e=selected();auto s=colour_surface(index);
+    if(!e || !s || library.process || index>=PortZwNative_ColourCount() || red<0 || red>255 || green<0 || green>255 || blue<0 || blue>255)return 0;
+    std::string field=s->damaged?"damagecolour":"colour",output;bool changed=false;int count=0;
+    auto replacement=field+"="+std::to_string(s->key)+","+std::to_string(red)+","+std::to_string(green)+","+std::to_string(blue);
+    bool remove=reset && !s->damaged;
     for(size_t at=0;at<e->edited.raw.size();) {
         auto end=e->edited.raw.find('\n',at);if(end==std::string::npos)end=e->edited.raw.size();
         auto next=end<e->edited.raw.size()?end+1:end;auto line=e->edited.raw.substr(at,next-at);
-        unsigned existing;int r,g,b,used=0;
-        if(line.compare(0,7,"colour=")==0)count++;
-        if(std::sscanf(line.c_str(),"colour=%u,%d,%d,%d%n",&existing,&r,&g,&b,&used)==4 && existing==key) {
-            if(!changed)output+=replacement+line.substr(size_t(used));changed=true;
+        unsigned key;int r,g,b,used=0;auto prefix=field+"=";
+        if(line.compare(0,prefix.size(),prefix)==0)count++;
+        if(line.compare(0,prefix.size(),prefix)==0 && std::sscanf(line.c_str()+prefix.size(),"%u,%d,%d,%d%n",&key,&r,&g,&b,&used)==4 && key==s->key) {
+            if(!changed && !remove)output+=replacement+line.substr(prefix.size()+size_t(used));changed=true;
         }else output+=line;
         at=next;
     }
-    if(!changed) {
-        if(count>=48){library.status="This warrior already uses the maximum number of material colour changes.";return 0;}
+    if(!changed && !remove) {
+        if(count>=512){library.status="Too many material colour overrides.";return 0;}
         if(!output.empty() && output.back()!='\n')output+='\n';output+=replacement+"\n";
     }
     if(output.size()>Limit)return 0;e->edited.raw=std::move(output);return 1;
+}
+extern "C" int PortZwNative_ColourWrite(int index,int red,int green,int blue){return colour_edit(index,red,green,blue,false);}
+extern "C" int PortZwNative_ColourReset(int index) {
+    auto e=selected();auto s=colour_surface(index);if(!e || !s || !e->coloursOriginal)return 0;
+    return colour_edit(index,s->rgb[0],s->rgb[1],s->rgb[2],true);
+}
+static int colourClipboard[3],colourCopied;
+extern "C" int PortZwNative_ColourCopy(int index) {
+    if(!colour_surface(index) || index>=PortZwNative_ColourCount())return 0;
+    for(int i=0;i<3;i++)colourClipboard[i]=PortZwNative_ColourValue(index,i);colourCopied=1;return 1;
+}
+extern "C" int PortZwNative_ColourPaste(int index) {
+    if(!colourCopied){library.status="Copy a colour first.";return 0;}
+    return PortZwNative_ColourWrite(index,colourClipboard[0],colourClipboard[1],colourClipboard[2]);
 }
 extern "C" int PortZwNative_DonorAllowed(int field,uint32_t name) {
     if(!name)return 0;

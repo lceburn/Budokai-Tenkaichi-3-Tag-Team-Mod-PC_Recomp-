@@ -24,6 +24,7 @@
 #include "common.h"
 #ifdef PORT
 #include "plat_warriors.h"
+extern s32 PortSpectator_PhotoViewRefresh(void);
 #endif
 #include "battle/btl_obj.h"
 #include "battle/battle.h"
@@ -973,7 +974,11 @@ void BtlObj_UpdateVisibility(s32 view) {
     BtlObjState *state;
     s32 idx;
 
-    if (Battle_GetWork()->flags & BATTLE_FLAG_PAUSE) {
+    if ((Battle_GetWork()->flags & BATTLE_FLAG_PAUSE)
+#ifdef PORT
+        && !PortSpectator_PhotoViewRefresh()
+#endif
+    ) {
         return;
     }
     idx = TagTeam_Active() ? view : view == 1;
@@ -1005,7 +1010,11 @@ void BtlObj_FinishVisibility(s32 split) {
     BtlObjView *rec;
     s32 i;
 
-    if (Battle_GetWork()->flags & BATTLE_FLAG_PAUSE) {
+    if ((Battle_GetWork()->flags & BATTLE_FLAG_PAUSE)
+#ifdef PORT
+        && !PortSpectator_PhotoViewRefresh()
+#endif
+    ) {
         return;
     }
     vis->flags = 0;

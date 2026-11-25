@@ -12,6 +12,7 @@ extern s32 PortTbo_TextRead(void),Port_PageAspectMilli(void),gPortOverlayOpen;
 extern char *strchr(const char *,s32),*strstr(const char *,const char *);
 extern void WarriorView_Open(void),WarriorView_Clear(void),WarriorView_Close(void);
 extern void WarriorView_Draw(s32,f32,f32,f32,s32);
+extern void WarriorView_SetVariant(s32,s32);
 
 enum { ZW_LIBRARY,ZW_EDIT,ZW_CHOOSE,ZW_NAME_PAD,ZW_COLOUR,ZW_FORMS,ZW_BUILD,ZW_NOTICE,ZW_DISCARD,ZW_SURFACES,ZW_SCALE,ZW_DELETE };
 static s32 page,tab,row,libraryRow,warrior,leaving,field,choice,choiceCount,parameter,channel,keyCursor;
@@ -19,6 +20,7 @@ static s32 choices[252],rgb[3];
 static char text[512],value[512],notice[512];
 static s32 lastPage,lastRow,lastTab;
 static s32 surface,previewStarted,previewState;
+static s32 surfaceDamaged;
 static s32 layerPart;
 static const char *layerKeys[]={"hair","head","face","chest","waist","upperarms","forearms","hands","hips","shins","feet","accessories","tail"};
 static s32 playtestRequest;
@@ -93,6 +95,8 @@ static void zw_edit_field(void) {
     s32 i;field=zw_field(row);
     if(field<0) {
         if(tab==1) {
+            if(!PortZwNative_ColourRefresh()){zw_status();return;}
+            surfaceDamaged=0;PortZwNative_ColourMode(0);
             if(!PortZwNative_ColourCount()){zw_info("Save your parts first to refresh the surface colour choices.");return;}
             choice=0;zw_page(ZW_SURFACES);return;
         }
@@ -201,8 +205,14 @@ static void zw_update(void) {
         else if(pressed&PADG_CROSS){sprintf(value,"%d",parameter);if(PortZwNative_Write(field,(u32)value))zw_page(ZW_EDIT);else zw_status();}
     }else if(page==ZW_SURFACES) {
         Ps_Move(&choice,PortZwNative_ColourCount());
+        if(pressed&(PADG_L1|PADG_R1)) {
+            surfaceDamaged=!surfaceDamaged;PortZwNative_ColourMode(surfaceDamaged);choice=0;
+        }
         if(pressed&PADG_TRIANGLE)zw_page(ZW_EDIT);
         else if(pressed&PADG_CROSS){surface=choice;for(i=0;i<3;i++)rgb[i]=PortZwNative_ColourValue(surface,i);field=-1;channel=0;zw_page(ZW_COLOUR);}
+        else if(pressed&PADG_SQUARE){if(!PortZwNative_ColourCopy(choice))zw_status();}
+        else if(pressed&PADG_CIRCLE){if(!PortZwNative_ColourPaste(choice))zw_status();}
+        else if(pressed&PADG_R2){if(!PortZwNative_ColourReset(choice))zw_status();}
     }else if(page==ZW_FORMS) {
         Ps_Move(&choice,PortZwNative_Count()+1);if(side)parameter=Ps_Wrap(parameter+side,0,5);
         if(pressed&PADG_TRIANGLE)zw_page(ZW_EDIT);
@@ -261,6 +271,10 @@ static void zw_draw(void) {
         PortZwNative_PreviewStop();previewStarted=0;previewState=0;
     }
     if(!PortGame_IsCustomCharacter(preview))preview=-1;
+    if(page==ZW_SURFACES || (page==ZW_COLOUR && field<0)) {
+        s32 picked=page==ZW_SURFACES?choice:surface;
+        WarriorView_SetVariant(PortZwNative_ColourValue(picked,4),surfaceDamaged);
+    }else WarriorView_SetVariant(0,0);
     WarriorView_Draw(preview,383,318,185,!gPortOverlayOpen && (page==ZW_EDIT || page==ZW_LIBRARY));
     Ps_PageSet();Ps_SetShift(0);Ps_Align(0);
     if(page==ZW_LIBRARY) {
@@ -357,14 +371,14 @@ static void zw_draw(void) {
         Ps_Copy(line,"50-180%, in 5% steps. Square restores 100%.",sizeof(line));
     }else if(page==ZW_SURFACES) {
         count=PortZwNative_ColourCount();first=choice/7*7;
-        Ps_Heading(16,65,"SURFACE COLOURS",1.2f,300,0x80);
+        Ps_Heading(16,65,surfaceDamaged?"SURFACE COLOURS: DAMAGED":"SURFACE COLOURS: NORMAL",.95f,300,0x80);
         for(i=first;i<count && i<first+7;i++) {
             s32 r=PortZwNative_ColourValue(i,0),g=PortZwNative_ColourValue(i,1),b=PortZwNative_ColourValue(i,2);f32 y=103+(i-first)*32;
-            sprintf(line,"Surface %d",PortZwNative_ColourValue(i,3)+1);zw_bar(y,line,i==choice);
+            sprintf(line,"Costume %d - Surface %d",PortZwNative_ColourValue(i,4)+1,PortZwNative_ColourValue(i,3)+1);zw_bar(y,line,i==choice);
             Ps_Rect(252,y+6,294,y+24,Ps_Rgba(r,g,b,128),Ps_Rgba(r,g,b,128));
         }
-        Ps_Copy(line,"Choose a material colour. Save after changing parts to refresh this list.",sizeof(line));
-        Ps_Prompt(0,"Colour");Ps_Prompt(2,"Back");
+        Ps_Copy(line,"L1/R1: Normal/Damaged. Square: Copy. Circle: Paste. R2: Reset colour.",sizeof(line));
+        Ps_Prompt(0,"Colour");Ps_Prompt(1,"Copy");Ps_Prompt(2,"Back");Ps_Prompt(4,"Paste");
     }else {
         char *message=page==ZW_BUILD?"Building and validating your warriors...":page==ZW_DISCARD?"Discard unsaved creator changes and leave?":notice;
         Ps_Rect(14,112,498,280,Ps_Rgba(77,37,134,120),Ps_Rgba(56,25,96,120));

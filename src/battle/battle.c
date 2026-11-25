@@ -378,6 +378,10 @@ void Battle_Loop(void) {
             BtlScript_Update();
         }
         BtlChars_CheckStart();
+#ifdef PORT
+        { extern void PortSpectator_PhotoPause(s32);
+          PortSpectator_PhotoPause((Battle_GetWork()->flags&(BATTLE_FLAG_PAUSE|BATTLE_FLAG_PAUSE_MENU))==(BATTLE_FLAG_PAUSE|BATTLE_FLAG_PAUSE_MENU)); }
+#endif
         Pad_Update();
 #ifdef PORT
         /* Leave through the normal teardown path, never dispatch an exit
