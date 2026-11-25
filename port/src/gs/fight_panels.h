@@ -7,7 +7,7 @@ extern "C" {
 #endif
 
 #define FP_MEMBERS 5 /* a side's member slots (include/battle/btl_char_member.h: BTL_MEMBER_SLOTS) */
-#define FP_PATH 260
+#define FP_PATH 1600
 #define FP_MOVES 5 /* technique slots: 0, 1 skills (Blast 1, blast stocks), 2, 3 techniques (Blast 2, ki), 4 ultimate */
 
 typedef struct FpMove {

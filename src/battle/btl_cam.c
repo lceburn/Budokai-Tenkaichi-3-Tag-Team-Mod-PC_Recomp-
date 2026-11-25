@@ -3,6 +3,7 @@
 #include "battle/battle.h"
 #include "battle/btl_cam.h"
 #ifdef PORT
+#include "battle/btl_obj.h"
 #include "battle/stg_a.h" /* (script mods' camera: the stage) */
 #endif
 #include "battle/btl_demo_cam.h"
@@ -493,7 +494,7 @@ static void BtlCam_PortCollide(BtlCamView *view, s32 objId) {
             len += a * a;
             got += b * b;
         }
-        f = len > 0.0001f ? (__builtin_sqrtf(got) - 4.0f) / __builtin_sqrtf(len) : 0.0f;
+        f = len > 0.0001f ? (sqrtf(got) - 4.0f) / sqrtf(len) : 0.0f;
         f = f < 0.0f ? 0.0f : f > 1.0f ? 1.0f : f;
     }
     if (f < sHeld[v]) {
@@ -507,6 +508,10 @@ static void BtlCam_PortCollide(BtlCamView *view, s32 objId) {
         ((f32 *)&view->pos)[i] = ((f32 *)&target)[i] + f * (((f32 *)&view->pos)[i] - ((f32 *)&target)[i]);
     }
 }
+#endif
+
+#ifdef PORT
+#include "btl_cam_clearance.inc"
 #endif
 
 /* Turns a battle view's pose into its matrices and optionally loads them for drawing. */
@@ -628,6 +633,30 @@ void BtlCam_UpdateView(s32 side) {
         DemoCam_ApplyFighter(TagTeam_CameraActor(TagTeam_ViewActor(side)),&view->view,&view->pos);
     }
 }
+
+#ifdef PORT
+/* Camera sampling precedes the late fighter/object pose pass. Resolve against
+   those final matrices before visibility/drawing, never against last frame's
+   head/hair pose. Canonical targeting was already captured in UpdateView. */
+void BtlCam_UpdateCustomClearance(void) {
+    extern s32 BtlCharApi_HasAuthoredCamera(s32);
+    BtlCamView *current;
+    s32 i;
+    if (!gBtlCam || DemoCam_IsActive()) return;
+    current=gBtlCam->cur;
+    for (i=0;i<TagTeam_CameraCount();i++) {
+        BtlCamView *view=battle_view(i);
+        s32 actor=TagTeam_Active()?TagTeam_CameraActor(TagTeam_ViewActor(i)):i;
+        s32 objId=BattleSide_GetObjId(actor);
+        Vec4 before=view->pos;
+        if (!TagNet_Active() && !TagTeam_ViewVisible(i)) continue;
+        if (view->priority || BtlCharApi_HasAuthoredCamera(objId)) continue;
+        BtlCam_CustomClearance(view,objId);
+        if (before.x!=view->pos.x || before.y!=view->pos.y || before.z!=view->pos.z)
+            BtlCam_BuildView(view,view==current);
+    }
+}
+#endif
 
 /* Segment test from `to` towards `from` against the stage collision: where a camera may stand. */
 s32 BtlCam_TraceStage(Vec4 *out, Vec4 *from, Vec4 *to, f32 *frac, s32 *hitObj) {
@@ -1168,6 +1197,11 @@ s32 TagOnline_BeginDraw(void) {
             chosen=TagTeam_CameraActor(actor);
             BtlCharApi_GetCamPose(BattleSide_GetObjId(chosen),&nativeViews[0].pos,&nativeViews[0].rot);
         }
+    }
+    if (!shared) {
+        extern s32 BtlCharApi_HasAuthoredCamera(s32);
+        s32 objId=BattleSide_GetObjId(TagTeam_CameraActor(actor));
+        if (!BtlCharApi_HasAuthoredCamera(objId)) BtlCam_CustomClearance(&nativeViews[0],objId);
     }
     nativeViews[0].index=0;BtlCam_SelectView(0);nativeSharedActor=actor;
     if(!shared) {

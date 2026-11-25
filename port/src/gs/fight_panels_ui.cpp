@@ -247,7 +247,9 @@ struct Art {
     float hx, hy, hs;   // the head's square in the portrait (pixels)
     float fx, fy;       // the face (the middle of the skin under the hair), what the panel places
     ImVec4 theme;       // the fighter's main colour, 0..1
-    double used;
+    double used, checked;
+    Sint64 modified;
+    Uint64 bytes;
 };
 static Art sArt[24];
 
@@ -450,10 +452,16 @@ static Art *art_get(const char *path, double now) {
     for (Art &a : sArt) {
         if (a.path[0] != '\0' && strcmp(a.path, path) == 0) {
             a.used = now;
-            return a.ok ? &a : NULL;
+            if (now - a.checked < 0.5) return a.ok ? &a : NULL;
+            SDL_PathInfo info = {};
+            a.checked = now;
+            if (SDL_GetPathInfo(path, &info) && info.modify_time == a.modified && info.size == a.bytes)
+                return a.ok ? &a : NULL;
+            slot = &a; // creator saves can replace this same filename
+            break;
         }
     }
-    for (Art &a : sArt) { // a free place, else the one unused the longest (not one drawn just now)
+    if (slot == NULL) for (Art &a : sArt) { // a free place, else the one unused the longest (not one drawn just now)
         if (a.path[0] == '\0') {
             slot = &a;
             break;
@@ -470,7 +478,9 @@ static Art *art_get(const char *path, double now) {
     }
     memset(slot, 0, sizeof(*slot));
     snprintf(slot->path, sizeof(slot->path), "%s", path);
-    slot->used = now;
+    slot->used = slot->checked = now;
+    SDL_PathInfo info = {};
+    if (SDL_GetPathInfo(path, &info)) { slot->modified = info.modify_time; slot->bytes = info.size; }
     uint8_t *pix = (uint8_t *)malloc((size_t)ART_W * ART_H * 4 * 3);
     if (pix == NULL || !portrait_rgba(path, pix)) {
         free(pix);

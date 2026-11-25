@@ -237,6 +237,9 @@ s32 Battle_Update(void) {
     BtlChars_EndFrame();
     NR_PHASE(NP_VISIBILITY);NR_VIEW(-1);
     BtlObj_UpdateAll();
+#ifdef PORT
+    { extern void BtlCam_UpdateCustomClearance(void); BtlCam_UpdateCustomClearance(); }
+#endif
     if (Battle_IsSplitScreen() && !singleView) {
         for (i = 0; i < TagTeam_ViewCount(); i++) {
             if (!TagTeam_ViewVisible(i)) continue;

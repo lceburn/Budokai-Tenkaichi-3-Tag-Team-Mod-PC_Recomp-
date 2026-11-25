@@ -710,7 +710,7 @@ extern "C" int PortGame_CheckAnimation(void *,int);
 namespace {
 std::string stockTauntRoot;
 std::vector<WarriorNativeSources::CatalogueEntry> stockTauntDonors;
-struct StockTauntCache {int donor=-1;void *data=nullptr;uint64_t used=0;};
+struct StockTauntCache {int donor=-1;void *data=nullptr;uint64_t used=0;float height=1;};
 std::array<StockTauntCache,16> stockTauntCache;
 uint64_t stockTauntClock=0;
 void stock_taunt_catalogue() {
@@ -728,12 +728,20 @@ extern "C" const char *PortStockTaunt_Name(int donor) {
 extern "C" void *PortStockTaunt_Animation(int donor) {
     if(!PortStockTaunt_Name(donor))return nullptr;
     for(auto &slot:stockTauntCache)if(slot.donor==donor){slot.used=++stockTauntClock;return slot.data;}
-    std::string motion,error;
+    std::string motion,error;float height=1;
     if(!WarriorStockTaunts::load(fs::u8path(stockTauntRoot),donor,motion,error) ||
-       PortGame_CheckAnimation(motion.data(),(int)motion.size())<0)return nullptr;
+       PortGame_CheckAnimation(motion.data(),(int)motion.size())<0 ||
+       !WarriorStockTaunts::relative(fs::u8path(stockTauntRoot),donor,motion,height,error))return nullptr;
     auto slot=std::min_element(stockTauntCache.begin(),stockTauntCache.end(),[](const StockTauntCache &a,const StockTauntCache &b){return a.used<b.used;});
     if(!slot->data)slot->data=Port_LowAlloc(0x10000);
     if(!slot->data)return nullptr;
-    std::memcpy(slot->data,motion.data(),motion.size());slot->donor=donor;slot->used=++stockTauntClock;
+    std::memcpy(slot->data,motion.data(),motion.size());slot->donor=donor;slot->used=++stockTauntClock;slot->height=height;
     return slot->data;
+}
+
+// Game code uses software-float returns; cross the host ABI as integer bits.
+extern "C" unsigned PortStockTaunt_HeightBits(int donor) {
+    float height=1.0f;unsigned bits;
+    for(const auto &slot:stockTauntCache)if(slot.donor==donor){height=slot.height;break;}
+    std::memcpy(&bits,&height,sizeof(bits));return bits;
 }

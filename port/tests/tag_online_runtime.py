@@ -493,7 +493,9 @@ for name,proc,_,log in jobs:
     if a.disconnect_after_custom and name!=a.disconnect:
         assert 'Their fighter is now a CPU' in content and 'frame 1800,' in content.rsplit('Loading the match...',1)[-1],log
     elif a.rounds:
-        assert return_complete(content), log
+        # An intentional room exit is validated by custom cleanup above;
+        # it cannot also resume another practice map in that closed room.
+        if not a.custom_exit_after:assert return_complete(content), log
         for marker in expected.get(a.case,[]):
             if a.party and name=='host' and marker=='PASS 2500':continue
             assert marker in content, (log,marker)

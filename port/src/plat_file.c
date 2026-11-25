@@ -15,6 +15,7 @@
 #include "plat_stages.h"
 #include "plat_songs.h"
 #include "plat_game.h"
+#include "plat_warriors.h"
 
 #define SECTOR 2048
 enum { STAT_STOP = 1, STAT_READING = 2, STAT_READEND = 3, STAT_ERROR = 4 };
@@ -116,6 +117,12 @@ int Port_FilePath(int ptid, int flid, const char *fname, char *out, int size) {
         rel[n] = '\0';
     } else {
         snprintf(rel, sizeof(rel), "%s/%05d.bin", partition_dir(ptid), flid);
+    }
+    {
+        /* Match the async file reader: custom portraits include local preview
+           and temporary network-room resources, never a disc donor fallback. */
+        int warrior = PortWarriors_Alias(rel, out, (unsigned)size);
+        if (warrior) return warrior > 0;
     }
     {
         /* The streamed audio (a song added from outside the disc) reads through this path, so the manifest's

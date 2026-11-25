@@ -152,10 +152,10 @@ static void portrait_path(int side, int slot, int chara, int costume) {
     if (!PortGame_IsCharacter(chara)) {
         return;
     }
-    /* The prototype uses the donor portrait until custom portrait routing is
-       connected to the HUD. Never index beyond the disc's portrait list. */
-    id = (PortGame_IsBT4()?1820:FACE_FILE) + PortGame_TableCharacter(chara);
-    if (!Port_FilePath(1, id - 1, NULL, sPath[side][slot], FP_PATH)) {
+    /* Use the same portrait identity as character selection, including room
+       IDs. Body, moves and the selected portrait are independent choices. */
+    id = PortGame_MenuPortrait(chara);
+    if (!Port_FilePath(PortGame_Partition(id), PortGame_FileIndex(id), NULL, sPath[side][slot], FP_PATH)) {
         sPath[side][slot][0] = '\0';
     }
 }
@@ -185,7 +185,7 @@ static void read_side(FpState *st, int side) {
         FpMember *o = &s->m[i];
         m = chr + CHR_MEMBERS + i * MEMBER_SIZE;
         o->present = rd(m, MEMBER_PRESENT) != 0;
-        o->chara = i == s->active && objChara >= 0 && objChara < CHARA_MAX ? objChara : rd(m, MEMBER_CHARA);
+        o->chara = i == s->active && objChara >= 0 && PortGame_IsCharacter(objChara) ? objChara : rd(m, MEMBER_CHARA);
         o->costume = rd(m, MEMBER_COSTUME);
         o->hp = rd(m, MEMBER_GAUGE + 0x00);
         o->hpMax = rd(m, MEMBER_GAUGE + 0x04);

@@ -635,7 +635,7 @@ typedef struct BtlEmoteDrawNode {
 } BtlEmoteDrawNode;
 
 static void BtlObjEmote_Sample(BobjAnim *motion, BobjBone *bone, const BobjPart *part,
-                              f32 frame, f32 hipScale, Vec4 *pos, Quat *rot) {
+                              f32 frame, f32 hipScale, s32 stock, f32 stockScale, Vec4 *pos, Quat *rot) {
     u16 cursor = 0;
     BobjTrack *track;
 
@@ -650,7 +650,11 @@ static void BtlObjEmote_Sample(BobjAnim *motion, BobjBone *bone, const BobjPart 
         BtlObjAnim_SampleRot(track, rot, &cursor, frame);
     } else {
         BtlObjAnim_SamplePosRot(track, pos, rot, &cursor, frame);
-        if (bone->id == 2) {
+        if (stock == 2) {
+            pos->x += bone->rest.x;
+            pos->y = bone->rest.y + pos->y * stockScale;
+            pos->z += bone->rest.z;
+        } else if (!stock && bone->id == 2) {
             pos->x += bone->rest.x;
             pos->y = bone->rest.y + pos->y * hipScale;
             pos->z += bone->rest.z;
@@ -666,6 +670,8 @@ void BtlObjEmote_Draw(BobjObj *obj, void (*draw)(BobjObj *), int selected, f32 e
     BobjBone *bone;
     extern void *PortStockTaunt_Animation(int);
     BobjAnim *motion;
+    s32 stock = selected >= BTL_EMOTE_STOCK_FIRST ? 2 : selected == BTL_EMOTE_OWN_STOCK;
+    f32 stockScale = 1.0f;
     if(selected>=BTL_EMOTE_STOCK_FIRST)
         motion=PortStockTaunt_Animation(selected-BTL_EMOTE_STOCK_FIRST);
     else if(selected==BTL_EMOTE_OWN_STOCK) {
@@ -673,8 +679,17 @@ void BtlObjEmote_Draw(BobjObj *obj, void (*draw)(BobjObj *), int selected, f32 e
         /* A reusable decoded layer independent of the fighter's live pose. */
         PORT_HOST static unsigned char stockBuffer[0xC000];
         motion=BtlObjAnim_Load(obj,stockBuffer,0x185,&bytes);
+        if (motion && obj->work && obj->work->retarget)
+            BtlObjAnim_Retarget(motion,obj,obj,0,1);
     } else motion=selected>=1 && selected<=BTL_EMOTE_COUNT?(BobjAnim *)kBattleEmotes[selected-1].data:NULL;
     if(!motion || !motion->length){draw(obj);return;}
+    if (stock == 2) {
+        extern u32 PortStockTaunt_HeightBits(int);
+        union { u32 bits; f32 value; } height;
+        height.bits = PortStockTaunt_HeightBits(selected-BTL_EMOTE_STOCK_FIRST);
+        stockScale = retarget_height(obj) / height.value;
+        if (!__builtin_isfinite(stockScale) || stockScale <= 0.0f || stockScale > 16.0f) { draw(obj); return; }
+    }
     const f32 frame = fmodf(elapsed, (f32)motion->length);
     const f32 t = frame / 6.0f;
     const f32 mix = t < 1.0f ? t * t * (3.0f - 2.0f * t) : 1.0f;
@@ -697,12 +712,12 @@ void BtlObjEmote_Draw(BobjObj *obj, void (*draw)(BobjObj *), int selected, f32 e
             break;
         }
         saved[count++] = (BtlEmoteDrawNode){part, part->mtx, part->parent};
-        BtlObjEmote_Sample(motion, bone, part, frame, hipScale, &pos, &rot);
+        BtlObjEmote_Sample(motion, bone, part, frame, hipScale, stock, stockScale, &pos, &rot);
         if (mix < 1.0f) {
             Vec4 fromPos = part->pos;
             Quat fromRot = part->rot;
             if (elapsed >= motion->length) {
-                BtlObjEmote_Sample(motion, bone, part, (f32)motion->length, hipScale, &fromPos, &fromRot);
+                BtlObjEmote_Sample(motion, bone, part, (f32)motion->length, hipScale, stock, stockScale, &fromPos, &fromRot);
             }
             Vec4_Lerp(&pos, &pos, &fromPos, mix);
             Quat_Slerp(&rot, &fromRot, &rot, mix);
