@@ -436,8 +436,10 @@ void BtlInput_BuildRecord(BtlInputChr *chr) {
     {
         extern s32 BattleSide_GetObjId(s32),BtlAct_GetCurrent(BtlInputChr *),BtlSeq_GetState(void);
         const s32 live=active && !chr->injectOn && !BattleReplay_IsActive() && BtlSeq_GetState()==3;
-        const s32 selected=live?BtlChar_GetPad(chr)->data[BTL_EMOTE_PAD_BYTE]:0;
+        const Pad *emotePad=BtlChar_GetPad(chr);
+        const s32 selected=live?(emotePad->data[BTL_EMOTE_PAD_BYTE] | (emotePad->data[BTL_EMOTE_PAD_BYTE+1]<<8)):0;
         const s32 idle=live && BtlAct_GetCurrent(chr)==0x0B;
+        BtlEmergency_Input(BattleSide_GetObjId(chr->player),emotePad->held,live);
         if(BtlEmote_Input(BattleSide_GetObjId(chr->player),buttons,idle,selected)) {
             buttons &= ~(BTLB_GUARD|BTLB_CIRCLE|BTLB_ANY_FACE);
             commands=BtlInput_BuildCommands(chr,buttons,prevButtons);
@@ -1058,6 +1060,11 @@ s32 BtlInput_TestAction(BtlInputChr *chr, s32 id, s32 want) {
         }
         break;
     case 46:
+#ifdef PORT
+        { extern s32 BattleSide_GetObjId(s32);
+          s32 object=BattleSide_GetObjId(chr->player);
+          if(BtlEmergency_Sampled(object)) {result=BtlEmergency_Triggered(object);break;} }
+#endif
         if (BtlInput_IsCmdPressed(chr, BTLC_LOCKON_P)) {
             if (BtlInput_GetCmdPrevFramesSincePress(chr, 22) < BTL_TAP_FRAMES) {
                 result = 1;

@@ -1,5 +1,7 @@
 #include "presentation.h"
 #include "../../../include/battle/emotes.h"
+extern "C" const char *PortStockTaunt_Name(int donor);
+extern "C" void *PortStockTaunt_Animation(int donor);
 // The settings window of the PC build: Dear ImGui over the finished picture. F1 opens and closes it, or START + SELECT
 // of a controller, or the key and button of its Controls list (gs_input.c: PortInput_Hotkey).
 // Everything it shows lives elsewhere (ui.h): the renderer's settings in gs_gpu.c, the bindings in gs_input.c.
@@ -2050,13 +2052,33 @@ static void cheats_tab(void) {
         };
         static_assert(IM_ARRAYSIZE(emotes) == BTL_EMOTE_COUNT + 1, "One label per emote");
         int selected = Port_Setting(BTL_EMOTE_SETTING, 0);
-        if (selected < 0 || selected > BTL_EMOTE_COUNT) selected = 0;
-        ImGui::SetNextItemWidth(U(250.0f));
-        if (ImGui::Combo("Emote", &selected, emotes, IM_ARRAYSIZE(emotes), 10)) {
-            Port_SettingSave(BTL_EMOTE_SETTING, selected);
-            Port_SettingsWrite();
+        if (selected && !BtlEmote_ValidSelection(selected)) selected = 0;
+        bool enabled=Port_Setting(BTL_EMOTE_ENABLED,1)!=0;
+        if(ImGui::Checkbox("Enable emotes",&enabled)) {
+            Port_SettingSave(BTL_EMOTE_ENABLED,enabled);Port_SettingsWrite();
         }
+        const char *stock=selected>=BTL_EMOTE_STOCK_FIRST?PortStockTaunt_Name(selected-BTL_EMOTE_STOCK_FIRST):nullptr;
+        const char *current=selected<=BTL_EMOTE_COUNT?emotes[selected]:selected==BTL_EMOTE_OWN_STOCK?"Current fighter's idle taunt":stock?stock:"Unavailable stock taunt";
+        ImGui::BeginDisabled(!enabled);
+        ImGui::SetNextItemWidth(U(250.0f));
+        if (ImGui::BeginCombo("Emote",current)) {
+            for(int n=0;n<=BTL_EMOTE_OWN_STOCK;n++) {
+                const char *label=n==BTL_EMOTE_OWN_STOCK?"Current fighter's idle taunt":emotes[n];
+                if(ImGui::Selectable(label,selected==n)) {Port_SettingSave(BTL_EMOTE_SETTING,n);Port_SettingsWrite();}
+            }
+            ImGui::SeparatorText("Stock character idle taunts");
+            for(int id=0;id<BTL_EMOTE_STOCK_LIMIT;id++)if(const char *name=PortStockTaunt_Name(id)) {
+                ImGui::PushID(id);
+                if(ImGui::Selectable(name,selected==BTL_EMOTE_STOCK_FIRST+id) && PortStockTaunt_Animation(id)) {
+                    Port_SettingSave(BTL_EMOTE_SETTING,BTL_EMOTE_STOCK_FIRST+id);Port_SettingsWrite();
+                }
+                ImGui::PopID();
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::EndDisabled();
         ImGui::TextWrapped("Hold L1 and press Circle (LB + B on Xbox) while idle. Move to cancel.");
+        ImGui::TextWrapped("Emergency wave: double-tap L1 / LB during an eligible damage reaction. Costs the original 5,000 health.");
         ImGui::Separator();
     }
 

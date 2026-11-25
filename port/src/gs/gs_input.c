@@ -1357,6 +1357,9 @@ int Port_PadRead(int socket, unsigned char *data) {
     data[1] = (unsigned char)(~(btn >> 8) & 0xFF);
     data[2] = rx; data[3] = ry; data[4] = lx; data[5] = ly;
     { int emote=Port_Setting(BTL_EMOTE_SETTING,0);
-      if(emote>0 && emote<=BTL_EMOTE_COUNT)data[BTL_EMOTE_PAD_BYTE]=(unsigned char)emote; }
+      if(Port_Setting(BTL_EMOTE_ENABLED,1) && BtlEmote_ValidSelection(emote)) {
+          data[BTL_EMOTE_PAD_BYTE]=(unsigned char)emote;
+          data[BTL_EMOTE_PAD_BYTE+1]=(unsigned char)(emote>>8);
+      } }
     return 18;
 }

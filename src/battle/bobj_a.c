@@ -17,6 +17,7 @@
 #include "battle/emotes.h"
 #ifdef PORT
 #include "battle_emote_motions.inc"
+#include "../../port/src/port_host.h"
 #endif
 
 extern void *memset(void *dst, s32 c, u32 n);
@@ -663,7 +664,17 @@ void BtlObjEmote_Draw(BobjObj *obj, void (*draw)(BobjObj *), int selected, f32 e
     BtlEmoteDrawNode saved[MAX_MODEL_NODES];
     Mtx44 transforms[MAX_MODEL_DEPTH];
     BobjBone *bone;
-    BobjAnim *motion = (BobjAnim *)kBattleEmotes[selected - 1].data;
+    extern void *PortStockTaunt_Animation(int);
+    BobjAnim *motion;
+    if(selected>=BTL_EMOTE_STOCK_FIRST)
+        motion=PortStockTaunt_Animation(selected-BTL_EMOTE_STOCK_FIRST);
+    else if(selected==BTL_EMOTE_OWN_STOCK) {
+        s32 bytes=0;
+        /* A reusable decoded layer independent of the fighter's live pose. */
+        PORT_HOST static unsigned char stockBuffer[0xC000];
+        motion=BtlObjAnim_Load(obj,stockBuffer,0x185,&bytes);
+    } else motion=selected>=1 && selected<=BTL_EMOTE_COUNT?(BobjAnim *)kBattleEmotes[selected-1].data:NULL;
+    if(!motion || !motion->length){draw(obj);return;}
     const f32 frame = fmodf(elapsed, (f32)motion->length);
     const f32 t = frame / 6.0f;
     const f32 mix = t < 1.0f ? t * t * (3.0f - 2.0f * t) : 1.0f;

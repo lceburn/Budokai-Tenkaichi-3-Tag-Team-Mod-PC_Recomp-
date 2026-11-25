@@ -8,6 +8,7 @@
 #include "warrior_native_effects.h"
 #include "warrior_native_attack_names.h"
 #include "warrior_native_delete.h"
+#include "warrior_stock_taunts.h"
 #include "../port_addr.h"
 #include "../../../include/menu/warrior_fields.h"
 #include <SDL3/SDL.h>
@@ -699,4 +700,40 @@ extern "C" int PortZwNative_Poll() {
 }
 extern "C" void PortZwNative_Trace(int page,int row,int tab) {
     if(std::getenv("BT3_TAG_TRACE"))std::fprintf(stderr,"warriorui page=%d row=%d tab=%d\n",page,row,tab);
+}
+
+// Presentation-only, bounded cache. Even repeatedly changing donors allocates
+// at most sixteen reusable low-address motion buffers, never a new game model.
+extern "C" const char *Port_FileRoot(void);
+extern "C" void *Port_LowAlloc(size_t);
+extern "C" int PortGame_CheckAnimation(void *,int);
+namespace {
+std::string stockTauntRoot;
+std::vector<WarriorNativeSources::CatalogueEntry> stockTauntDonors;
+struct StockTauntCache {int donor=-1;void *data=nullptr;uint64_t used=0;};
+std::array<StockTauntCache,16> stockTauntCache;
+uint64_t stockTauntClock=0;
+void stock_taunt_catalogue() {
+    std::string root=Port_FileRoot();if(root==stockTauntRoot)return;
+    stockTauntRoot=root;stockTauntDonors.clear();std::string error;
+    WarriorNativeSources::catalogue(fs::u8path(root),stockTauntDonors,error);
+    for(auto &slot:stockTauntCache)slot.donor=-1;
+}
+}
+extern "C" const char *PortStockTaunt_Name(int donor) {
+    stock_taunt_catalogue();
+    for(const auto &entry:stockTauntDonors)if(entry.id==donor)return entry.name.c_str();
+    return nullptr;
+}
+extern "C" void *PortStockTaunt_Animation(int donor) {
+    if(!PortStockTaunt_Name(donor))return nullptr;
+    for(auto &slot:stockTauntCache)if(slot.donor==donor){slot.used=++stockTauntClock;return slot.data;}
+    std::string motion,error;
+    if(!WarriorStockTaunts::load(fs::u8path(stockTauntRoot),donor,motion,error) ||
+       PortGame_CheckAnimation(motion.data(),(int)motion.size())<0)return nullptr;
+    auto slot=std::min_element(stockTauntCache.begin(),stockTauntCache.end(),[](const StockTauntCache &a,const StockTauntCache &b){return a.used<b.used;});
+    if(!slot->data)slot->data=Port_LowAlloc(0x10000);
+    if(!slot->data)return nullptr;
+    std::memcpy(slot->data,motion.data(),motion.size());slot->donor=donor;slot->used=++stockTauntClock;
+    return slot->data;
 }
