@@ -51,7 +51,7 @@ inline bool nonvisual_only(Document original,Document edited) {
     };
     remove(original);remove(edited);return metadata_only(original,edited);
 }
-struct FileEdit {fs::path path;std::string original,edited;bool model=false,resource=false;};
+struct FileEdit {fs::path path;std::string original,edited;bool model=false,resource=false,portrait=false;};
 // A normal installation has no personal character folders until its first
 // save. Initialize only an empty library; never replace an existing index or
 // silently orphan character folders whose activation index is missing.
@@ -96,6 +96,13 @@ inline bool animation_name(const std::string &name) {
     return name.size()>suffix.size() && name.find_first_of("/\\:")==std::string::npos && name.compare(name.size()-suffix.size(),suffix.size(),suffix)==0;
 }
 inline bool resource_name(const std::string &name) {return effect_name(name) || animation_name(name);}
+inline bool portrait_name(const std::string &name) {
+    const std::string suffix="_img.cdbt";
+    if(name.find_first_of("/\\:")==std::string::npos && name.size()>suffix.size() &&
+       name.compare(name.size()-suffix.size(),suffix.size(),suffix)==0)return true;
+    return name.size()==17 && name.compare(0,8,"pzs3us1/")==0 && name.compare(13,4,".bin")==0 &&
+        name.substr(8,5).find_first_not_of("0123456789")==std::string::npos;
+}
 inline bool model_name(const std::string &name) {
     if(name.find_first_of("/\\:")!=std::string::npos)return false;
     for(int i=1;i<=4;i++)for(const char *damage:{"","_dmg"}) {
@@ -131,16 +138,18 @@ inline bool publish(const fs::path &root,const std::vector<FileEdit> &files,
     std::set<fs::path> seen;
     for(const auto &file:files) {
         auto actual=fs::canonical(file.path,ec);
+        auto folder=actual.parent_path();
+        if(file.portrait && folder.filename()=="pzs3us1")folder=folder.parent_path();
         if(ec || fs::is_symlink(file.path,ec) || ec || actual!=file.path ||
-           actual.parent_path().parent_path()!=mods || !seen.insert(actual).second ||
-           (file.model?!model_name(actual.filename().u8string()):file.resource?!resource_name(actual.filename().u8string()):actual.filename()!="warrior.txt" && actual.filename()!="mod.txt" && actual.filename()!="native-colours.tsv")) {
+           folder.parent_path()!=mods || !seen.insert(actual).second ||
+           (file.portrait?!portrait_name(actual.lexically_relative(folder).generic_u8string()):file.model?!model_name(actual.filename().u8string()):file.resource?!resource_name(actual.filename().u8string()):actual.filename()!="warrior.txt" && actual.filename()!="mod.txt" && actual.filename()!="native-colours.tsv")) {
             error="A native save path leaves its warrior folder.";return false;
         }
         std::string current;
-        if(!read_file(actual,current,file.model || file.resource) || current!=file.original) {
+        if(!read_file(actual,current,file.model || file.resource || file.portrait) || current!=file.original) {
             error="A warrior changed on disk. Reopen the creator before saving.";return false;
         }
-        if(file.model?file.edited.empty() || ((file.edited.size()+2047)&~size_t(2047))>WarriorNativePack::ModelLimit:file.resource?file.edited.empty() || file.edited.size()>64*1024*1024:
+        if(file.model?file.edited.empty() || ((file.edited.size()+2047)&~size_t(2047))>WarriorNativePack::ModelLimit:file.resource || file.portrait?file.edited.empty() || file.edited.size()>64*1024*1024:
            file.edited.size()>WarriorRecipe::Limit || file.edited.find('\0')!=std::string::npos) {
             error="The native draft is invalid.";return false;
         }
@@ -167,7 +176,7 @@ inline bool publish(const fs::path &root,const std::vector<FileEdit> &files,
         // Recheck each file immediately before replacement as well as before
         // staging. Another editor can change it while backups are written.
         std::string current;
-        if(!read_file(files[committed].path,current,files[committed].model || files[committed].resource) || current!=files[committed].original ||
+        if(!read_file(files[committed].path,current,files[committed].model || files[committed].resource || files[committed].portrait) || current!=files[committed].original ||
            !replace(pending[committed],files[committed].path))break;
     }
     if(committed!=files.size()) {
@@ -175,7 +184,7 @@ inline bool publish(const fs::path &root,const std::vector<FileEdit> &files,
         while(committed) {
             committed--;auto rollback=job/(std::to_string(committed)+".rollback");
             std::string current;
-            if(!read_file(files[committed].path,current,files[committed].model || files[committed].resource) || current!=files[committed].edited) {
+            if(!read_file(files[committed].path,current,files[committed].model || files[committed].resource || files[committed].portrait) || current!=files[committed].edited) {
                 restored=false;continue; // Do not destroy another editor's newer changes.
             }
             if(!WarriorRecipe::write(rollback,files[committed].original) || !atomic_replace(rollback,files[committed].path))restored=false;

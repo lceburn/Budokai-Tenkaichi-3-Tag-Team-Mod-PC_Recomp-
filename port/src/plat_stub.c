@@ -463,6 +463,19 @@ int scePad2GetButtonProfile(int socket, unsigned char *profile) {
    active-low; the sticks rest at 0x80. */
 extern int Port_PadRead(int socket, unsigned char *data);
 
+/* Network loading uses idle synchronized pads. The loading minigame alone
+   reads local edge presses, without changing gPad or the match input stream. */
+int Port_LoadMiniInput(int reset) {
+    PORT_HOST static unsigned held[2];
+    unsigned char data[18];int i,count=0;
+    for(i=0;i<2;i++) {
+        unsigned down=Port_PadRead(i,data) && !(data[1]&0x40);
+        if(!reset && down && !held[i])count++;
+        held[i]=down;
+    }
+    return count;
+}
+
 /* Recording and playing back a whole session's controller input:
        BT3_PAD_REC=<file>    every pad read of this run is appended to the file (18 bytes per read, both ports)
        BT3_PAD_PLAY=<file>   the reads are answered from the file instead; after its end the pads are idle

@@ -20,17 +20,20 @@ void PortInput_Spectator(float *axes){memset(axes,0,7*sizeof(float));}
 void PortInput_SpectatorSlot(int player,float *axes){(void)player;PortInput_Spectator(axes);}
 int main(void) {
     PortSpectator_BattleActive(1);
-    PortSpectator_PhotoPause(0);PortSpectator_InputButtons(0,0x400);assert(!PortSpectator_PhotoActive());
+    PortSpectator_PhotoPause(0);PortSpectator_InputButtons(0,0x8000);assert(!PortSpectator_PhotoActive());
     PortSpectator_InputButtons(0,0);PortSpectator_PhotoPause(1);
-    PortSpectator_InputButtons(0,0x400);assert(PortSpectator_PhotoActive() && mode==1);
+    PortSpectator_InputButtons(0,0x400);assert(!PortSpectator_PhotoActive()); // L1 remains a camera control
+    PortSpectator_InputButtons(0,0);
+    PortSpectator_InputButtons(0,0x8000);assert(PortSpectator_PhotoActive() && mode==1);
+    PortSpectator_InputButtons(0,0x8000);assert(PortSpectator_PhotoActive()); // held button toggles once
     assert(PortSpectator_FilterButtons(0xffff)==8); // only normal Resume reaches pause menu
     PortSpectator_InputButtons(0,0);PortSpectator_InputButtons(0,1);
     assert(mode==TagCamera_SelectNext(1)); // Select works without changing global Select option
     PortSpectator_PhotoPause(0);assert(!PortSpectator_PhotoActive() && mode==0 && !PortSpectator_Manual());
-    PortSpectator_InputButtons(0,0);PortSpectator_PhotoPause(1);PortSpectator_InputButtons(0,0x400);
+    PortSpectator_InputButtons(0,0);PortSpectator_PhotoPause(1);PortSpectator_InputButtons(0,0x8000);
     assert(PortSpectator_PhotoActive());
     enabled=0;PortSpectator_PhotoPause(1);assert(!PortSpectator_PhotoActive() && mode==0);
-    enabled=1;PortSpectator_InputButtons(0,0);gPortOverlayOpen=1;PortSpectator_InputButtons(0,0x400);
+    enabled=1;PortSpectator_InputButtons(0,0);gPortOverlayOpen=1;PortSpectator_InputButtons(0,0x8000);
     assert(!PortSpectator_PhotoActive());gPortOverlayOpen=0;
     PortSpectator_EndBattle();assert(!PortSpectator_PhotoActive());
     puts("PASS: Photo Mode requires frozen pause, filters menu input, cycles cameras, restores prior view, respects disable/overlay and clears at teardown");

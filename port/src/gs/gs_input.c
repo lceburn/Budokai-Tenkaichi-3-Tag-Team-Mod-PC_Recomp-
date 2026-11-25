@@ -14,6 +14,7 @@
  * bytes of the buffer are left at zero. The game's motor commands go to the player's controller (Port_PadVibrate).
  */
 #include <SDL3/SDL.h>
+#include "../../../include/battle/emotes.h"
 #include <math.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -1355,5 +1356,7 @@ int Port_PadRead(int socket, unsigned char *data) {
     data[0] = (unsigned char)(~btn & 0xFF);       /* active low */
     data[1] = (unsigned char)(~(btn >> 8) & 0xFF);
     data[2] = rx; data[3] = ry; data[4] = lx; data[5] = ly;
+    { int emote=Port_Setting(BTL_EMOTE_SETTING,0);
+      if(emote>0 && emote<=BTL_EMOTE_COUNT)data[BTL_EMOTE_PAD_BYTE]=(unsigned char)emote; }
     return 18;
 }

@@ -18,6 +18,7 @@
 #include "battle/btl_obj.h"
 #include "battle/btl_cam.h"
 #include "battle/tag_team.h"
+#include "battle/emotes.h"
 
 void BtlObjDraw_DrawModel(BtlObj *obj);
 void BtlObjDraw_DrawModelFade(BtlObj *obj);
@@ -30,6 +31,20 @@ extern void ObjShadow_Draw(BtlObj *obj, void *view);
 extern void ObjShadow_ResetEnv(void);
 
 #define FLAG_BITS(p) ((BtlObjFlagBits *)&(p)->flags)
+
+/* Adapted from NauTaro/DBZ-BT4-Tag-Team-Decomp, a5e13c9a1dcd4b5847746ca330e55f9796b3941f, AGPL-3.0. */
+static void DrawBattleModel(BtlObj *obj, void (*draw)(BtlObj *)) {
+#ifdef PORT
+    f32 frame;
+    const int selected = obj->type == BTL_OBJ_TYPE_CHARA ? BtlEmote_Pose(obj->id, &frame) : 0;
+    if (selected) {
+        extern void BtlObjEmote_Draw(BtlObj *, void (*)(BtlObj *), int, f32);
+        BtlObjEmote_Draw(obj, draw, selected, frame);
+        return;
+    }
+#endif
+    draw(obj);
+}
 
 /* In split screen (two or more views) makes view `view` the current one, with its scissor. */
 void BtlObjDraw_ApplyView(s32 view, s32 count) {
@@ -53,7 +68,7 @@ void BtlObjDraw_DrawLists(s32 count) {
             BtlObjState *state = &obj->state;
 
             state->view = BtlObj_View(obj, v);
-            BtlObjDraw_DrawModel(obj);
+            DrawBattleModel(obj, BtlObjDraw_DrawModel);
         }
     }
 }
@@ -74,7 +89,7 @@ void BtlObjDraw_DrawFadeLists(s32 count) {
 
             state->view = BtlObj_View(obj, v);
             if (state->view->flags & BTL_OBJ_FLAG_FADE) {
-                BtlObjDraw_DrawModelFade(obj);
+                DrawBattleModel(obj, BtlObjDraw_DrawModelFade);
             }
         }
     }

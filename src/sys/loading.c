@@ -5,6 +5,7 @@
 #include "sys/rand.h"
 
 #ifdef PORT
+#include "../../port/src/port_host.h"
 extern void Port_GsMarker(s32 effect);
 extern int Port_PageAspectMilli(void);
 #define PORT_2D_LOADING 0x17
@@ -43,6 +44,25 @@ typedef struct LoadPad {
 
 extern LoadPad gPad[2];
 extern void Pad_Update(void);
+
+#ifdef PORT
+extern s32 Port_NetActive(void);
+extern s32 Port_LoadMiniInput(s32 reset);
+/* Loading-screen choices are local presentation. In a network session they
+   must not advance fight RNG when players mash at different rates. */
+PORT_HOST static u32 loadMiniRandom = 0x4c4f4144;
+static s32 Load_Random(s32 count) {
+    if (!Port_NetActive()) return Rand_Range(count);
+    loadMiniRandom = loadMiniRandom * 1664525u + 1013904223u;
+    return (s32)((loadMiniRandom >> 8) % (u32)count);
+}
+static s32 Load_RandomBetween(s32 lo, s32 hi) {
+    return Port_NetActive() ? lo + Load_Random(hi-lo+1) : Rand_IntRange(lo,hi);
+}
+#else
+#define Load_Random Rand_Range
+#define Load_RandomBetween Rand_IntRange
+#endif
 
 #define SPRITE(p, f, X0, Y0, X1, Y1, U0, V0, U1, V1, T, R, G, B, A) \
     (p)->flags = (f); \
@@ -164,19 +184,22 @@ void Load_BuildSprites(void) {
         SPRITE_END(spr);
         memset(gLoadScreen.items, 0, sizeof(gLoadScreen.items));
         for (i = 0; i < LOAD_ITEM_COUNT; i++) {
-            gLoadScreen.items[i * LOAD_ITEM_WORDS + LOAD_ITEM_X] = Rand_IntRange(0x10, 0x19C);
-            gLoadScreen.items[i * LOAD_ITEM_WORDS + LOAD_ITEM_Y] = Rand_IntRange(0x30, 0x160);
+            gLoadScreen.items[i * LOAD_ITEM_WORDS + LOAD_ITEM_X] = Load_RandomBetween(0x10, 0x19C);
+            gLoadScreen.items[i * LOAD_ITEM_WORDS + LOAD_ITEM_Y] = Load_RandomBetween(0x30, 0x160);
         }
-        gLoadScreen.target = Rand_Range(LOAD_ITEM_COUNT);
+        gLoadScreen.target = Load_Random(LOAD_ITEM_COUNT);
         break;
     }
 }
 
 /* Picks a screen type different from the last one, loads and unpacks its sprite sheet and sets up its timing. */
 void Load_InitScreen(void) {
+#ifdef PORT
+    Port_LoadMiniInput(1);
+#endif
     memset(&gLoadScreen, 0, sizeof(LoadScreen));
     do {
-        gLoadScreen.type = Rand_Range(LOAD_TYPE_COUNT);
+        gLoadScreen.type = Load_Random(LOAD_TYPE_COUNT);
     } while (gLoadScreen.type + 1 == gProgress->lastLoadType);
     /* (*&...): the original reloads gProgress after each of these two stores (see the note on LoadScreen). */
     (*&gProgress->lastLoadType) = gLoadScreen.type + 1;
@@ -245,7 +268,7 @@ void Load_UpdateScreen(void) {
             if (gLoadScreen.flags & LOAD_FLAG_TAKEN) {
                 if (gLoadScreen.count < LOAD_ITEM_COUNT) {
                     do {
-                        gLoadScreen.target = Rand_Range(LOAD_ITEM_COUNT);
+                        gLoadScreen.target = Load_Random(LOAD_ITEM_COUNT);
                     } while (gLoadScreen.items[gLoadScreen.target * LOAD_ITEM_WORDS + LOAD_ITEM_FLAGS] & 1);
                 } else {
                     gLoadScreen.count = 0;
@@ -272,6 +295,17 @@ void Load_ReadInput(void) {
     if (gLoadScreen.flags & LOAD_FLAG_PRESSED) {
         gLoadScreen.flags &= ~LOAD_FLAG_PRESSED;
     }
+#ifdef PORT
+    if (Port_NetActive()) {
+        s32 presses = Port_LoadMiniInput(0);
+        if (presses) {
+            gLoadScreen.presses -= presses;
+            if (gLoadScreen.presses < 0) gLoadScreen.presses = 0;
+            gLoadScreen.flags |= LOAD_FLAG_PRESSED;
+        }
+        return;
+    }
+#endif
     if (gPad[0].gamePressed & LOAD_BUTTON) {
         gLoadScreen.presses--;
         gLoadScreen.flags |= LOAD_FLAG_PRESSED;

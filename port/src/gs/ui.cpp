@@ -1,4 +1,5 @@
 #include "presentation.h"
+#include "../../../include/battle/emotes.h"
 // The settings window of the PC build: Dear ImGui over the finished picture. F1 opens and closes it, or START + SELECT
 // of a controller, or the key and button of its Controls list (gs_input.c: PortInput_Hotkey).
 // Everything it shows lives elsewhere (ui.h): the renderer's settings in gs_gpu.c, the bindings in gs_input.c.
@@ -2038,6 +2039,28 @@ static void tech_tab(void) {
 
 static void cheats_tab(void) {
     {
+        const char *const emotes[] = {
+            "Original taunt",
+            "01  Fortnite Dance", "02  Gamna Style", "03  Pose 1", "04  Dance 01", "05  Celebration",
+            "06  Dance 02", "07  Twerk", "08  Twerk 2", "09  Habilidad 1", "10  Habilidad 2",
+            "11  Pose 2", "12  Pose 3", "13  Pose 4", "14  Burla", "15  Dance 03",
+            "16  Dance 04", "17  Dance 05", "18  Pose 5", "19  Habilidad 3", "20  Muerte",
+            "21  Bingo 01", "22  Bingo 02", "23  Female Standing Pose",
+            "24  Dancing", "25  Step Hip Hop Dance", "26  Silly Dancing", "27  Rumba Dancing"
+        };
+        static_assert(IM_ARRAYSIZE(emotes) == BTL_EMOTE_COUNT + 1, "One label per emote");
+        int selected = Port_Setting(BTL_EMOTE_SETTING, 0);
+        if (selected < 0 || selected > BTL_EMOTE_COUNT) selected = 0;
+        ImGui::SetNextItemWidth(U(250.0f));
+        if (ImGui::Combo("Emote", &selected, emotes, IM_ARRAYSIZE(emotes), 10)) {
+            Port_SettingSave(BTL_EMOTE_SETTING, selected);
+            Port_SettingsWrite();
+        }
+        ImGui::TextWrapped("Hold L1 and press Circle (LB + B on Xbox) while idle. Move to cancel.");
+        ImGui::Separator();
+    }
+
+    {
         int speed = Port_GameSpeed();
         if (ImGui::SliderInt("Game speed", &speed, 50, 200, "%d%%", ImGuiSliderFlags_AlwaysClamp)) {
             Port_GameSpeedSet(speed);
@@ -2671,10 +2694,10 @@ static void meter_draw(void) {
 // letters with a dark outline, as tall as the rectangle allows, centred for a stage and from the left for a song.
 static void spectator_tab(void) {
     bool photo=Port_Setting("spectator_photo_mode",0)!=0;
-    if(ImGui::Checkbox("Photo Mode: L1 while paused",&photo)) {
+    if(ImGui::Checkbox("Photo Mode: Square while paused",&photo)) {
         Port_SettingSave("spectator_photo_mode",photo);Port_SettingsWrite();
     }
-    ImGui::SetItemTooltip("During a frozen offline pause, L1 hides/restores the pause menu. Use spectator camera controls and Select to cycle views. Start resumes. Online matches continue while their menu is open.");
+    ImGui::SetItemTooltip("During a frozen offline pause, Square hides/restores the pause menu. Use spectator camera controls and Select to cycle views. Start resumes. Online matches continue while their menu is open.");
     ImGui::TextWrapped("After defeat, your configured target/spectator button cycles character views, Free camera, Fight overview, then the first character. Return to a character view before taking over a teammate.");
     bool cycle=Port_Setting("spectator_select_cycle",0)!=0;
     if(ImGui::Checkbox("Use Select to cycle camera",&cycle)) {

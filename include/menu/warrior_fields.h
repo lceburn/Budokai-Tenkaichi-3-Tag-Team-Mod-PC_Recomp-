@@ -91,7 +91,7 @@ static int zw_native_editable(int field) {
     if(field<0 || field>=ZW_FIELD_COUNT)return 0;
     if(zwFields[field].kind==ZW_LAYER || zwFields[field].kind==ZW_NUMBER)return 0;
     switch(field) {
-    case ZW_PORTRAIT:case ZW_LOOK2:case ZW_LOOK3:case ZW_LOOK4:
+    case ZW_LOOK2:case ZW_LOOK3:case ZW_LOOK4:
     case ZW_BODYSET:case ZW_ACCESSORIES:case ZW_FINISHERS:case ZW_ANIM_MELEE:
     case ZW_BLAST11COLOUR:case ZW_BLAST12COLOUR:return 0;
     default:return 1;

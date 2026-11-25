@@ -145,6 +145,9 @@ s32 Battle_Restart(void) {
     TagChallenge_Reset();
     Snd_StopBankAndResume(TagTeam_Active() ? ((1u<<(4+PORT_FIGHTER_CAPACITY))-4) : 0x3C);
     Battle_ResetWork();
+#ifdef PORT
+    { extern void BtlEmote_Reset(void); BtlEmote_Reset(); }
+#endif
     BtlScene_Reset(0);
     StgFx_Reset();
     BtlGame_Reset();

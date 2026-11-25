@@ -15,7 +15,7 @@ static SpecCamera sCamera;
 static int sReset,sSeenReset,sCount=2,sInputActive,sLastZoom=100,sZoomHeld;
 static Uint64 sLastTick;
 static int sManual,sBattleActive,sSelectHeld;
-static int sPhoto,sPhotoPaused,sPhotoL1,sPhotoPreviousMode,sPhotoPreviousManual,sPhotoRestore;
+static int sPhoto,sPhotoPaused,sPhotoSquare,sPhotoPreviousMode,sPhotoPreviousManual,sPhotoRestore;
 int PortSpectator_PhotoActive(void) { return sPhoto && sPhotoPaused && !gPortResim; }
 int PortSpectator_PhotoViewRefresh(void) { return !gPortResim && (sPhoto || sPhotoRestore); }
 void PortSpectator_PhotoFrameDone(void) { if(!gPortResim && sPhotoRestore)sPhotoRestore--; }
@@ -47,14 +47,14 @@ unsigned PortSpectator_InputButtons(int player,unsigned buttons) {
     int enabled,held;
     if(player!=0 || gPortResim)return buttons;
     held=(buttons&1u)!=0;
-    if(sPhotoPaused && Port_Setting("spectator_photo_mode",0) && (buttons&0x400u) && !sPhotoL1 && !gPortOverlayOpen) {
+    if(sPhotoPaused && Port_Setting("spectator_photo_mode",0) && (buttons&0x8000u) && !sPhotoSquare && !gPortOverlayOpen) {
         if(sPhoto)photo_exit();
         else {
             sPhotoPreviousMode=PortSpectator_Mode();sPhotoPreviousManual=PortSpectator_Manual();sPhoto=1;
             PortSpectator_SetMode(sPhotoPreviousMode?sPhotoPreviousMode:1);
         }
     }
-    sPhotoL1=(buttons&0x400u)!=0;
+    sPhotoSquare=(buttons&0x8000u)!=0;
     if(PortSpectator_PhotoActive()) {
         if(held && !sSelectHeld && !gPortOverlayOpen)PortSpectator_SetMode(TagCamera_SelectNext(PortSpectator_Mode()));
         sSelectHeld=held;return buttons&~1u;
@@ -74,7 +74,7 @@ int PortSpectator_Zoom(void) { return (int)spec_clamp(Port_Setting("spectator_zo
 void PortSpectator_SetZoom(int zoom) { Port_SettingSave("spectator_zoom",(int)spec_clamp(zoom,100,300));Port_SettingsWrite(); }
 void PortSpectator_ResetCamera(void) { PortSpectator_SetZoom(100);__atomic_add_fetch(&sReset,1,__ATOMIC_RELAXED); }
 void PortSpectator_EndBattle(void) {
-    sPhoto=sPhotoPaused=sPhotoL1=sPhotoRestore=0;
+    sPhoto=sPhotoPaused=sPhotoSquare=sPhotoRestore=0;
     sCamera.live=0;sLastTick=0;__atomic_store_n(&sInputActive,0,__ATOMIC_RELAXED);
     memset(sViewCamera,0,sizeof(sViewCamera));memset(sViewLastTick,0,sizeof(sViewLastTick));PortSpectator_ClearViews();
     __atomic_store_n(&sManual,0,__ATOMIC_RELAXED);PortSpectator_BattleActive(0);sSelectHeld=0;

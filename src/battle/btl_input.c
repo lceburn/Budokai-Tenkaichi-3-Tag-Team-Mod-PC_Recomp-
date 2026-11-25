@@ -5,6 +5,7 @@
 #include "sys/pad.h"
 #include "sys/save.h"
 #include "battle/tag_clash.h"
+#include "battle/emotes.h"
 
 /*
  * Per-fighter battle input: 0x1D3B40..0x1D60A0.
@@ -425,14 +426,25 @@ void BtlInput_BuildRecord(BtlInputChr *chr) {
         if (BattleReplay_IsActive()) {
             BtlReplay_Play(chr, &buttons, stick);
             commands = BtlInput_BuildCommands(chr, buttons, prevButtons);
-        } else {
-            BtlReplay_Record(chr, buttons, commands, stick);
         }
     } else {
         buttons = 0;
         stick[1] = stick[0] = BTL_STICK_CENTER;
         commands = 0;
     }
+#ifdef PORT
+    {
+        extern s32 BattleSide_GetObjId(s32),BtlAct_GetCurrent(BtlInputChr *),BtlSeq_GetState(void);
+        const s32 live=active && !chr->injectOn && !BattleReplay_IsActive() && BtlSeq_GetState()==3;
+        const s32 selected=live?BtlChar_GetPad(chr)->data[BTL_EMOTE_PAD_BYTE]:0;
+        const s32 idle=live && BtlAct_GetCurrent(chr)==0x0B;
+        if(BtlEmote_Input(BattleSide_GetObjId(chr->player),buttons,idle,selected)) {
+            buttons &= ~(BTLB_GUARD|BTLB_CIRCLE|BTLB_ANY_FACE);
+            commands=BtlInput_BuildCommands(chr,buttons,prevButtons);
+        }
+    }
+#endif
+    if(active && !BattleReplay_IsActive())BtlReplay_Record(chr,buttons,commands,stick);
     chr->input.rec.tag[0] = 'O';
     chr->input.rec.tag[1] = 'P';
     chr->input.rec.tag[2] = 'R';

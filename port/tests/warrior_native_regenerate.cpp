@@ -26,13 +26,21 @@ int main(int argc,char **argv) {
     std::string raw;assert(read_file(source/"Old_anm.pak",raw,true) && raw=="new");
     assert(read_file(source/".warrior_built",raw) && raw==oldManifest);
     assert(!fs::exists(source/"New_anm.pak"));
-    // Unsupported assets and reordered slots must fail without appending edits.
-    assert(WarriorRecipe::write(stage/b[4],"different portrait"));files.clear();
-    assert(!plan(source,stage,files,error) && files.empty());
-    assert(WarriorRecipe::write(stage/b[4],"old"));
+    // Portraits publish under the original routed names, including both members.
+    for(unsigned i=4;i<7;i++)assert(WarriorRecipe::write(stage/b[i],std::string("portrait\0bytes",14)));
+    files.clear();assert(plan(source,stage,files,error) && files.size()==3);
+    for(const auto &file:files)assert(file.portrait && !file.model && !file.resource);
+    assert(publish(root,files,error));
+    for(unsigned i=4;i<7;i++)assert(read_file(source/a[i],raw,true) && raw==std::string("portrait\0bytes",14));
+    assert(!fs::exists(source/b[4]) && !fs::exists(source/b[5]));
+    // A nested member filename is not a general-purpose binary write capability.
+    assert(WarriorRecipe::write(source/"pzs3us1/evil.bin","old"));
+    assert(!publish(root,{{source/"pzs3us1/evil.bin","old","new",false,false,true}},error));
+    assert(!publish(root,{{source/"warrior.txt","new\n","binary",false,false,true}},error));
+    files.clear();
     assert(WarriorRecipe::write(stage/".warrior_built",newManifest+"../escape\n"));
     assert(!plan(source,stage,files,error) && files.empty());
     assert(role("pzs3us1/00013.bin")==12 && role("pzs3us1/../x.bin")==-1);
     assert(role("Old_1p.pak")!=role("New_1p_dmg.pak"));
-    std::cout<<"PASS: donor changes retain routed filenames; incompatible resources reject before publication\n";
+    std::cout<<"PASS: donor and portrait edits retain routed filenames; binary members are bounded to their warrior folder\n";
 }

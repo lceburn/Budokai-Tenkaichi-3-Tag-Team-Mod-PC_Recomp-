@@ -49,10 +49,7 @@ inline bool plan(const fs::path &source,const fs::path &staged,std::vector<FileE
             error="The native warrior is missing a generated resource.";return false;
         }
         if(before==after)continue;
-        // Portrait/member changes need their own publication path. A move-set
-        // edit only replaces models, motions and effects; keep those files stable.
-        if(kind>10) {error="This edit requires unsupported portrait or member replacement.";return false;}
-        pending.push_back({source/fs::u8path(oldNames[i]),std::move(before),std::move(after),kind<=8,kind>=9});
+        pending.push_back({source/fs::u8path(oldNames[i]),std::move(before),std::move(after),kind<=8,kind==9 || kind==10,kind==11 || kind==12});
     }
     for(const char *name:{"warrior.txt","mod.txt","native-colours.tsv"}) {
         std::string before,after;

@@ -89,7 +89,7 @@ inline bool supports(const Document &recipe) {
         auto key=line.substr(0,equals);
         auto category=WarriorNativeMotionGroups::group(key);
         if(category==2 || (category>=0 && line.substr(equals+1).find(", costume ")!=std::string::npos))return false;
-        if(key!="body" && key!="moves" && key!="voice" && key!="style" && key!="colour" && key!="damagecolour" &&
+        if(key!="body" && key!="moves" && key!="voice" && key!="style" && key!="portrait" && key!="colour" && key!="damagecolour" &&
            key!="hair" && key!="head" && key!="face" && key!="hands" && !body_slot(key) && category<0 && !WarriorNativeAttacks::key(key) && !WarriorNativeEffects::key(key) && !WarriorNativeBuild::metadata_key(key) && !WarriorNativeForms::key(key))return false;
         auto value=line.substr(equals+1);
         if(!WarriorRecipe::value_ok(value) || (key.size()>=4 && key.compare(key.size()-4,4,"name")==0 && key!="name" && value.size()>31))return false;
@@ -172,6 +172,16 @@ inline bool generate(const fs::path &root,const Document &recipe,const fs::path 
     if(WarriorNativeSources::bt4_origin(moves.pack)!=bt4 || WarriorNativeSources::bt4_origin(voice.pack)!=bt4 ||
        WarriorNativeSources::bt4_origin(style.pack)!=bt4) {
         error="The native body, moves, voice and style must use the same source-data profile.";return false;
+    }
+    int portraitId=body.id;std::string portraitHud;
+    if(!recipe.get("portrait").empty()) {
+        WarriorNativeSources::Model portrait;
+        if(!WarriorNativeSources::model(root,recipe.get("portrait"),portrait,error))return false;
+        if(WarriorNativeSources::bt4_origin(portrait.pack)!=bt4){error="The portrait must use the body's source-data profile.";return false;}
+        std::vector<WarriorNativeTextureBindings::Texture> textures;
+        if(portrait.pack.entries.empty() || !WarriorNativeTextureBindings::textures(portrait.pack.entries[0],textures,error))return false;
+        portraitHud=portrait.pack.entries[0];
+        portraitId=portrait.id;
     }
     for(const auto &choice:std::vector<std::pair<const char *,unsigned>>{{"head",1},{"face",2},{"hair",4}}) {
         auto name=recipe.get(choice.first);if(name.empty())continue;
@@ -257,6 +267,10 @@ inline bool generate(const fs::path &root,const Document &recipe,const fs::path 
                 if(!WarriorNativeBodyModel::compose(model,selections,assembled,error))return false;
                 model=std::move(assembled);
             }
+            // The active health-bar portrait is a texture sheet in section 0,
+            // separate from mesh/skin/face-animation data. Selection follows
+            // only the Portrait field, for every costume and damage variant.
+            if(!portraitHud.empty())model.entries[0]=portraitHud;
             if(!WarriorNativePack::copy_entries(model,voice.pack,53,252,error) || !WarriorNativePack::copy_style(model,style.pack,error))return false;
             std::vector<WarriorNativeMaterials::Material> current;
             if(!WarriorNativeMaterials::catalogue(model,current,error))return false;
@@ -282,10 +296,10 @@ inline bool generate(const fs::path &root,const Document &recipe,const fs::path 
     if(intact.empty() || intact.size()!=damaged.size()){error="The stock source has no complete model family.";return false;}
     std::string built="#warrior 47\n";
     for(const auto &name:intact)built+=name+"\n";for(const auto &name:damaged)built+=name+"\n";
-    const int ids[]={1431+moves.id*10,1432+moves.id*10,760+body.id,7+body.id*2,8+body.id*2};
+    const int ids[]={1431+moves.id*10,1432+moves.id*10,760+portraitId,7+portraitId*2,8+portraitId*2};
     const std::string prefix="Goku_"+std::to_string(moves.id);
-    // Supporting portraits keep the body's contents, published under the
-    // template's member filenames expected by the resource router.
+    // All three portrait resources follow the selected donor, published under
+    // the existing template filenames so saved and network routing stay stable.
     std::ostringstream memberA,memberB;memberA<<"pzs3us1/"<<std::setfill('0')<<std::setw(5)<<(7+moves.id*2)<<".bin";memberB<<"pzs3us1/"<<std::setfill('0')<<std::setw(5)<<(8+moves.id*2)<<".bin";
     const std::string names[]={prefix+"_anm.pak",prefix+"_eff.pak",prefix+"_img.cdbt",memberA.str(),memberB.str()};
     for(int i=0;i<5;i++) {
