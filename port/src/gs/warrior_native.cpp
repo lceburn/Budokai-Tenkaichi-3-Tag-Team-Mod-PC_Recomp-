@@ -200,7 +200,9 @@ extern "C" int PortZwNative_Preview(int field,uint32_t highlighted) {
         auto built=library.root/".warrior-builds"/("native-preview-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()))/"Preview";
         std::string error;
         if(!WarriorNativeStock::generate(library.root,draft,built,error,native_family(),e->folder) || !preview_apply(built)) {
-            library.status=error.empty()?"Could not display the native warrior preview.":error;p.failed=key;return -2;
+            library.status=error.empty()?"Could not display the native warrior preview.":error;
+            std::fprintf(stderr,"warrior native preview rejected: %s\n",library.status.c_str());
+            p.failed=key;return -2;
         }
         if(p.cache.size()>=16)p.cache.erase(p.cache.begin());
         p.cache.push_back({key,built});p.ready=true;p.applied=key;
@@ -402,7 +404,10 @@ extern "C" int PortZwNative_Write(int field,uint32_t value) {
         if(number==100)v.clear();
     }
     if(zwFields[field].kind==ZW_RGB && !v.empty() && (v.size()!=6 || v.find_first_not_of("0123456789abcdefABCDEF")!=std::string::npos))return 0;
-    return patch_choice(e->edited,field,v);
+    const bool applied=patch_choice(e->edited,field,v);
+    if(applied && sourceChoice)
+        std::fprintf(stderr,"warrior native choice: field=%s source=%s\n",zwFields[field].key,v.empty()?"default":v.c_str());
+    return applied;
 }
 static int new_warrior(int copyForm,bool linkForm) {
     auto &l=library;if(l.process)return -1;

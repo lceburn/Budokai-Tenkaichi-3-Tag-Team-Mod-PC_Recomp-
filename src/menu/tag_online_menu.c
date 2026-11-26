@@ -6,6 +6,7 @@
 #include "menu/tag_setup.h"
 typedef struct LoadSprite {s32 flags,x0,y0,x1,y1,u0,v0,u1,v1,tex,r,g,b,a;} LoadSprite;
 #include "sys/pad.h"
+#include "sys/heap.h"
 #include "../../port/src/gs/tag_net.h"
 #include "../../port/include/plat_warriors.h"
 
@@ -37,6 +38,7 @@ static void *duelArt,*selectArt,*chipPack,*stagePack,*faceData,*stageData;
 static MTexRes *background,*facePic,*stagePic;
 static MTexRes *musicArt[2];
 static s32 faceId=-1,stageId=-1;
+static s32 stageIds[128],stageCount,stageCursor;
 static TagNetStatus room;
 static TlTournament bracket;
 static char label[160],value[128];
@@ -83,12 +85,32 @@ static void stage_preview(f32 x,f32 y,f32 w,f32 h) {
     for(row=0;row<2;row++)for(col=0;col<4;col++)
         sprite(stagePic,col+row*4,x+w*col/4,y+h*row/2,w/4,h/2,0,0,128,256,128);
 }
+/* Reuse one decoded picture. Placeholder IDs are not compressed sprites. */
 static void load_stage(s32 id) {
-    void *file;if(id==stageId)return;
-    sceGsSyncPath(0,0);if(stageData)Heap_Free(stageData);stageData=NULL;stagePic=NULL;stageId=id;
+    void *file;s32 *header;if(id==stageId)return;
+    sceGsSyncPath(0,0);stagePic=NULL;stageId=id;
     file=File_LoadSync(TS_STAGE_FILE+id,NULL,0);if(!file)return;
-    stageData=Sprite_Unpack(file,NULL,NULL);Heap_Free(file);
+    header=file;
+    if(header[0]<=0 || header[0]>0x43000 || header[1]<=0 || header[1]>0x3B800-8) {
+        Heap_Free(file);return;
+    }
+    if(!stageData)stageData=Heap_Alloc(0x43000,0x20,0,HEAP_ANY);
+    if(!stageData){Heap_Free(file);return;}
+    Sprite_Unpack(file,stageData,NULL);Heap_Free(file);
     stagePic=(MTexRes *)stageData;Res_RelocateOffsets(&stagePic,stagePic,stagePic);
+}
+static void stage_choices(void) {
+    s32 *table=(s32 *)MPACK_AT(selectArt,39),i,j,id,n=table[0];
+    stageCount=0;
+    /* Use the same authored grid as normal stage select, excluding empty,
+       locked and Random entries. The numeric range contains placeholders. */
+    if(n<0 || n>128)n=0;
+    for(i=0;i<n;i++) {
+        id=table[4+i];if(id<0 || id>=PortGame_StageCount() || id==35)continue;
+        for(j=0;j<stageCount && stageIds[j]!=id;j++){}
+        if(j==stageCount)stageIds[stageCount++]=id;
+    }
+    if(!stageCount)stageIds[stageCount++]=0;
 }
 static void load_face(s32 id) {
     void *file;if(id==faceId)return;
@@ -212,7 +234,12 @@ static void activate(s32 id) {
                 for(k=c.size[0]+c.size[1];k>i;k--)TagNet_CopyFighter(&c,k,k-1);
                 c.chara[i]=0;c.costume[i]=0;c.owner[i]=-1;c.cpuLevel[i]=-1;c.lobby.draft.team[i]=team;memset(c.items[i],0,sizeof(c.items[i]));c.size[team]++;commit(&c);
             }
-        } else if(id==10){choice=c.stage;go(STAGE,100+choice);}
+        } else if(id==10){
+            choice=c.stage;stageCursor=0;
+            for(i=0;i<stageCount;i++)if(stageIds[i]==choice){stageCursor=i;break;}
+            if(i==stageCount)choice=stageIds[0];
+            go(STAGE,100+stageCursor);
+        }
         else if(id==11){choice=0;while(choice<PortGame_MusicCount() && PortGame_MusicAt(choice)!=c.music)choice++;go(MUSIC,100+choice);}
         else if(id==12)go(RULES,0);
         else if(id==13)TagNet_SwitchRole(room.config.party?!claimed():room.role==TN_OBSERVER,-1);
@@ -236,8 +263,8 @@ static void activate(s32 id) {
         }
         if(id==6)select_room();
     } else if(page==STAGE) {
-        if(id>=100){choice=id-100;return;}
-        if(id==0 || id==1){choice=Ps_Wrap(choice+(id==0?-9:9),0,PortGame_StageCount()-1);if(choice==35)choice=34;focus=100+choice;}
+        if(id>=100 && id<100+stageCount){stageCursor=id-100;choice=stageIds[stageCursor];return;}
+        if(id==0 || id==1){stageCursor=Ps_Wrap(stageCursor+(id==0?-9:9),0,stageCount-1);focus=100+stageCursor;}
         if(id==4 && room.host){c.stage=choice;commit(&c);select_room();}
         if(id==6)select_room();
     } else if(page==MUSIC) {
@@ -326,7 +353,8 @@ static void input(void) {
     }
     if(old!=focus) {
         Snd_PlaySe(1,0);
-        if(focus>=100&&(page==STAGE||page==MUSIC||page==PRESETS))choice=focus-100;
+        if(focus>=100 && page==STAGE)stageCursor=focus-100;
+        else if(focus>=100&&(page==MUSIC||page==PRESETS))choice=focus-100;
     }
     if((p&PADG_START) && page==ROOM)ready();
     if((p&PADG_SQUARE) && page==ROOM && !bracket.active)remove_slot(focus);
@@ -451,15 +479,17 @@ static void lobby(void) {
     button(15,411,385,83,29,"Leave",1);
 }
 static void stages(void) {
-    s32 i,start=(choice/9)*9,last=start+9;if(last>PortGame_StageCount())last=PortGame_StageCount();
-    heading("CHOOSE STAGE",room.host?"HOST'S BATTLEFIELD SELECTION":"THE HOST CHOOSES THE BATTLEFIELD");load_stage(choice);
+    s32 i,start=(stageCursor/9)*9,last=start+9;if(last>stageCount)last=stageCount;
+    heading("CHOOSE STAGE",room.host?"SELECT A STAGE, THEN CONFIRM":"THE HOST CHOOSES THE BATTLEFIELD");load_stage(stageIds[stageCursor]);
     plate(18,90,249,221,0,0);stage_preview(23,95,239,209);
-    for(i=start;i<last;i++)if(i!=35) {
-        f32 x=279+73*((i-start)%3),y=91+70*((i-start)/3);MTexRes *pic=(MTexRes *)MPACK_AT(stagePack,i+1);
+    for(i=start;i<last;i++) {
+        f32 x=279+73*((i-start)%3),y=91+70*((i-start)/3);MTexRes *pic=(MTexRes *)MPACK_AT(stagePack,stageIds[i]+1);
         button(100+i,x,y,67,63,"",1);texture(pic,x+3,y+4,61,54);
+        if(stageIds[i]==choice)text(x+33,y+44,"SELECTED",0.34f,63,1);
     }
-    name(1,choice,label,sizeof(label));text(141,320,label,0.91f,246,1);
-    button(0,279,309,57,28,"<",1);sprintf(label,"%d / %d",choice/9+1,(PortGame_StageCount()+8)/9);text(383,314,label,0.7f,70,3);button(1,432,309,60,28,">",1);
+    name(1,stageIds[stageCursor],label,sizeof(label));text(141,314,label,0.91f,246,1);
+    name(1,choice,label,sizeof(label));left(18,340,"Selected:",0.52f,55,3);left(73,340,label,0.52f,410,1);
+    button(0,279,309,57,28,"<",1);sprintf(label,"%d / %d",stageCursor/9+1,(stageCount+8)/9);text(383,314,label,0.7f,70,3);button(1,432,309,60,28,">",1);
     button(4,143,365,170,34,"Confirm Stage",room.host);button(6,326,365,100,34,"Back",1);
 }
 static void music(void) {
@@ -611,10 +641,10 @@ void TagOnlineMenu_Open(void) {
     duelArt=Sprite_Unpack(MPACK_AT(gMenuArc5,1),NULL,NULL);
     background=(MTexRes *)MPACK_AT(duelArt,1);Res_RelocateOffsets(&background,background,background);
     icons=MPACK_AT(duelArt,24);Res_RelocateOffsets(&icons,icons,icons);IconWin_Init(MPACK_AT(duelArt,23),icons);IconWin_PortHideWords();IconWin_Open();
-    selectArt=Sprite_Unpack(MPACK_AT(gMenuArc5,2),NULL,NULL);chipPack=MPACK_AT(selectArt,45);stagePack=MPACK_AT(selectArt,46);
+    selectArt=Sprite_Unpack(MPACK_AT(gMenuArc5,2),NULL,NULL);chipPack=MPACK_AT(selectArt,45);stagePack=MPACK_AT(selectArt,46);stage_choices();
     for(i=0;i<2;i++){pic=(MTexRes *)MPACK_AT(selectArt,4-i);Res_RelocateOffsets(&pic,pic,pic);musicArt[i]=pic;}
     for(i=0;i<PortGame_CharacterCount() && i<(s32)((u32 *)chipPack)[0];i++)if(PortGame_IsCharacter(i)){pic=(MTexRes *)MPACK_AT(chipPack,i+1);Res_RelocateOffsets(&pic,pic,pic);}
-    for(i=0;i<PortGame_StageCount();i++)if(i!=35){pic=(MTexRes *)MPACK_AT(stagePack,i+1);Res_RelocateOffsets(&pic,pic,pic);}
+    for(i=0;i<stageCount;i++){pic=(MTexRes *)MPACK_AT(stagePack,stageIds[i]+1);Res_RelocateOffsets(&pic,pic,pic);}
     Pad_SetRepeat(20,5);Bgm_Play(0x10B16+2);ColorFade_StartIn(0,0,0,12);
 }
 s32 TagOnlineMenu_Frame(void) {
