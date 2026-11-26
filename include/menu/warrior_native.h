@@ -5,6 +5,7 @@
 s32 PortZwNative_Open(void);
 s32 PortZwNative_Count(void);
 s32 PortZwNative_Select(s32 index);
+s32 PortZwNative_Selected(void);
 s32 PortZwNative_List(s32 index,u32 out,s32 capacity,s32 folder);
 s32 PortZwNative_Read(s32 field,u32 out,s32 capacity);
 s32 PortZwNative_Write(s32 field,u32 value);

@@ -171,14 +171,30 @@ void BtlObjMdl_BindFiles(ObjMdlObj *obj) {
     mdl->model = mdl->file;
     mdl->meshes = (ObjMdlMesh *)((u8 *)mdl->file + mdl->file->meshOfs);
     if (!mdl->file->bound) {
+#ifdef PORT
+        u32 minTbp = 0x7FFFFFFF, minCbp = 0x7FFFFFFF;
+        /* Uploads keep the texture file's origin when a part replacement
+           removes all meshes using its first texture. Include that origin
+           before the VIF scan, so drawing and upload addresses still agree. */
+        Res_RelocateOffsets(&mdl->tex, (u8 *)mdl->texFile, mdl->texFile);
+        for (i = mdl->model->texFirst; i < mdl->model->texFirst + mdl->model->texCount && (u32)i < mdl->tex->count; i++) {
+            TexEntry *entry = &mdl->tex->ent[i];
+            if ((u32)entry->tbpOfs < minTbp) minTbp = (u32)entry->tbpOfs;
+            if ((u32)entry->cbpOfs < minCbp) minCbp = (u32)entry->cbpOfs;
+        }
+#endif
         mdl->file->tbp = 0x3480;
         mdl->model->cbp = 0x3C00;
         mdl->model->cbp2 = 0x3D00;
         mdl->model->tbp2 = 0x3D40;
         mdl->model->unk68 = 0x3E40;
         mdl->model->alphaRow = BtlObjVis_AllocFreeBit();
-        MdlTex_RebaseChain(0, mdl->meshes, mdl->model->tbp, mdl->model->cbp, 0x3D40, mdl->model->cbp2, 0x7FFFFFFF,
-                           0x7FFFFFFF);
+        MdlTex_RebaseChain(0, mdl->meshes, mdl->model->tbp, mdl->model->cbp, 0x3D40, mdl->model->cbp2,
+#ifdef PORT
+                           minTbp, minCbp);
+#else
+                           0x7FFFFFFF, 0x7FFFFFFF);
+#endif
         for (i = 0; i < 8; i++) {
             if (obj->mdl.extra[i] != NULL) {
                 MdlTex_RebaseChain(1, obj->mdl.extra[i], mdl->model->tbp, mdl->model->cbp, 0x3D40, mdl->model->cbp2,

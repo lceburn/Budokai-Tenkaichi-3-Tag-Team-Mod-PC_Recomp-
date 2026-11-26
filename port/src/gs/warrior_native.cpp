@@ -222,6 +222,7 @@ extern "C" int PortZwNative_Preview(int field,uint32_t highlighted) {
 extern "C" int PortZwNative_Open() {
     attackNames.clear();
     auto &l=library;if(l.process)return int(l.entries.size());
+    const std::string selectedFolder=selected()?selected()->folder:std::string();
     l.entries.clear();l.roster.clear();l.donors.clear();l.selected=-1;l.nativeResult=0;l.status.clear();
     const char *data=std::getenv("BT3_DATA");l.root=fs::u8path(data?data:"gamedata");
     if(WarriorNativeSources::available(l.root)) {
@@ -264,11 +265,13 @@ extern "C" int PortZwNative_Open() {
     }
     l.enabled=list;
     if(!l.entries.empty())l.selected=0;
+    for(size_t i=0;i<l.entries.size();i++)if(l.entries[i].folder==selectedFolder){l.selected=int(i);break;}
     if(std::getenv("BT3_TAG_TRACE"))std::fprintf(stderr,"warrior-menu open count=%d\n",int(l.entries.size()));
     return int(l.entries.size());
 }
 extern "C" int PortZwNative_Count(){return int(library.entries.size());}
 extern "C" int PortZwNative_Select(int index){if(index<0 || index>=int(library.entries.size()) || library.process)return 0;library.selected=index;return 1;}
+extern "C" int PortZwNative_Selected(){return library.selected;}
 extern "C" int PortZwNative_List(int index,uint32_t out,int capacity,int folder) {
     if(index<0 || index>=int(library.entries.size()))return 0;
     auto &e=library.entries[index];return copy_out(folder?e.folder:e.edited.get("name"),out,capacity);
@@ -284,7 +287,8 @@ static Surface *colour_surface(int index) {
     return nullptr;
 }
 extern "C" int PortZwNative_ColourRefresh() {
-    auto e=selected();if(!e || e->fresh)return 0;
+    auto e=selected();if(!e)return 0;
+    if(e->fresh){library.status="Save your character first to edit its surface colours.";return 0;}
     if(!e->coloursOriginal) {
         std::vector<WarriorNativeMaterials::Material> materials;
         if(!WarriorNativeStock::generate(library.root,e->original,fs::path(),library.status,native_family(),e->folder,&materials))return 0;

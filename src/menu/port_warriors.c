@@ -123,7 +123,7 @@ static void zw_update(void) {
     s32 i,side=Ps_Side();
     if(page==ZW_BUILD) {
         s32 result=PortZwNative_Poll();
-        if(result){if(result==1)previewState=0;libraryRow=warrior<PortZwNative_Count()?warrior+1:1;zw_status();}return;
+        if(result){if(result==1){previewState=0;warrior=PortZwNative_Selected();}libraryRow=warrior<PortZwNative_Count()?warrior+1:1;zw_status();}return;
     }
     if(page==ZW_LIBRARY) {
         Ps_Move(&libraryRow,PortZwNative_Count()+2);
