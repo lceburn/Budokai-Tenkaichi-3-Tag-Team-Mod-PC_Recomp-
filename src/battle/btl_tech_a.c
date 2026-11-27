@@ -1494,6 +1494,13 @@ s32 BtlParam_GetUnkB1(BtlTechChr *chr, s32 n) {
    abilities 0x4D..0x53, 0x74, 0x54..0x56 (first match in that order). */
 s32 BtlParam_GetAuraKind(BtlTechChr *chr) {
     s32 v = BtlChar_GetObj(chr)->param->auraKind;
+#ifdef PORT
+    /* An explicit creator choice owns the aura, independently of the move
+       donor's inherited aura abilities. Default retains native ability rules. */
+    extern s32 BtlObj_GetWarriorAuraPreset(void *obj);
+    s32 selectedAura=BtlObj_GetWarriorAuraPreset(BtlChar_GetObj(chr));
+    if(selectedAura>=0)return selectedAura;
+#endif
 
     if (BtlMember_HasAbility(chr, 0x4D)) {
         v = 0;

@@ -83,7 +83,11 @@ void PortSpectator_EndBattle(void) {
 }
 void PortSpectator_SetInputActive(int active) { __atomic_store_n(&sInputActive,active!=0,__ATOMIC_RELAXED); }
 int PortSpectator_ConsumesInput(void) { return PortSpectator_PhotoActive() || (__atomic_load_n(&sInputActive,__ATOMIC_RELAXED) && PortSpectator_Mode()!=0); }
-unsigned PortSpectator_FilterButtons(unsigned buttons) { return PortSpectator_PhotoActive()?buttons&0x0008u:PortSpectator_ConsumesInput()?buttons&0x0009u:buttons; }
+unsigned PortSpectator_FilterButtons(unsigned buttons) {
+    if(PortSpectator_PhotoActive())return buttons&0x0008u;
+    if(PortSpectator_ConsumesInput() && !Port_Setting("spectator_button_passthrough",0))return buttons&0x0009u;
+    return buttons;
+}
 void PortSpectator_ClearViews(void) { int i;for(i=0;i<4;i++)__atomic_store_n(&sAutoInput[i],0,__ATOMIC_RELAXED); }
 void PortSpectator_StopView(int view) { if(view>=0 && view<15){sViewCamera[view].live=0;sViewLastTick[view]=0;} }
 void PortSpectator_ViewInput(int player,int active,unsigned button) {

@@ -244,7 +244,7 @@ static void TeamSel_LoadWarriorChips(void) {
     s32 i,count=PortGame_LocalPickerActive()?PortWarriors_LocalCount():PortWarriors_Count();
     memset(warriorChips,0,sizeof(warriorChips));
     for(i=0;i<count && i<PORT_WARRIOR_SESSION_MAX;i++) {
-        MTexRes *res; s32 file=PortGame_WarriorChip(PortGame_LocalPickerActive()?PORT_WARRIOR_FIRST_CHARACTER+i:PortGame_WarriorCharacter(i));
+        MTexRes *res; s32 file=PortGame_WarriorChip(PortGame_LocalPickerActive()?PortWarriors_LocalCharacter(i):PortGame_WarriorCharacter(i));
         if(file<0)continue;
         /* File reads round up to 2048-byte sectors, including their padding. */
         res=Heap_Alloc(6144,0x40,0,2);

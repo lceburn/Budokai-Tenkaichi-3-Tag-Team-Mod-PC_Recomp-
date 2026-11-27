@@ -553,9 +553,9 @@ void EftAura_SetType(EftAuraWork *aura, s32 objId, s32 type, s32 paramFlags) {
         s32 rgb=PortGame_WarriorAuraColour(BtlCharApi_GetChara(objId));
         static s32 traced[4];
         if(objId>=0 && objId<4 && !traced[objId] && getenv("BT3_WARRIOR_TRACE")) {
-            traced[objId]=1;printf("warrior aura tint: object=%d character=%d colour=%06x\n",objId,BtlCharApi_GetChara(objId),rgb);
+            traced[objId]=1;printf("warrior aura tint: object=%d character=%d colour=%06x kind=%d\n",objId,BtlCharApi_GetChara(objId),rgb,type);
         }
-        if(rgb>0) {
+        if(rgb>=0) {
             f32 red=rgb&255,green=(rgb>>8)&255,blue=(rgb>>16)&255,peak=red;s32 i;
             if(green>peak)peak=green;if(blue>peak)peak=blue;if(peak<1.0f)peak=1.0f;
             red/=peak;green/=peak;blue/=peak;

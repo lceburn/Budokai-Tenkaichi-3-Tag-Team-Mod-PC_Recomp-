@@ -11,11 +11,8 @@ inline bool motions(const WarriorNativePack::Pack &body,const WarriorNativePack:
         error="Unsupported native motion pack layout.";return false;
     }
     auto result=moves;
-    // The unoverridden stance groups remain attached to the base body.
-    // All other motions follow the complete moves donor. Explicit animation
-    // group selections are applied separately and are not handled here.
-    for(unsigned index:{0u,1u,7u,38u,39u,395u})
-        if(!WarriorNativePack::copy_entries(result,body,index+1,index+1,error))return false;
+    // Default means the complete Move Set, including stance. Independent
+    // animation group selections are applied after this baseline.
     out=std::move(result);error.clear();return true;
 }
 inline bool common(WarriorNativePack::Pack &model,const WarriorNativePack::Pack &moves,std::string &error) {
@@ -29,9 +26,8 @@ inline bool common(WarriorNativePack::Pack &model,const WarriorNativePack::Pack 
     // the moves donor before any independent voice/style/attack overrides.
     result.entries[17].replace(4,8,model.entries[17].substr(4,8));
     for(size_t i=18;i<52;i++) {
-        // Secondary chains, animation scaling and the body's standing stream
-        // are not common technique resources.
-        if(i==22 || i==25 || i==35)continue;
+        // Secondary chains and animation scaling remain body-owned.
+        if(i==22 || i==25)continue;
         result.entries[i]=moves.entries[i];
     }
     model=std::move(result);error.clear();return true;

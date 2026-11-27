@@ -34,6 +34,15 @@ int main(void) {
     assert(input_reads==reads);gPortOverlayOpen=0;
     PortSpectator_SetInputActive(1);assert(PortSpectator_ConsumesInput());
     assert(PortSpectator_FilterButtons(0xffff)==0x0009); /* Start and Select remain usable */
+    Port_SettingSave("spectator_button_passthrough",1);
+    for(int view=1;view<=3;view++) {
+        PortSpectator_SetMode(view);assert(PortSpectator_ConsumesPlayer(0));
+        assert(PortSpectator_FilterPlayer(0,0xffff)==0xffff);
+    }
+    PortSpectator_SetMode(0);assert(!PortSpectator_ConsumesPlayer(0));
+    assert(PortSpectator_FilterPlayer(0,0xffff)==0xffff);
+    PortSpectator_SetMode(2);Port_SettingSave("spectator_button_passthrough",0);
+    assert(PortSpectator_FilterPlayer(0,0xffff)==0x0009);
     PortSpectator_SetInputActive(0);assert(PortSpectator_FilterButtons(0xffff)==0xffff); /* pause navigation */
     reads=input_reads;PortSpectator_Camera(eye,rot,targets,2,.517f,1.777f,result_eye,result_rot,&zoom);
     assert(input_reads==reads); /* pause directions must not move the camera */

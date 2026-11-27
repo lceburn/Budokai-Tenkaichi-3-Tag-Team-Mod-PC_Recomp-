@@ -2726,6 +2726,11 @@ static void spectator_tab(void) {
         Port_SettingSave("spectator_select_cycle",cycle);Port_SettingsWrite();
     }
     ImGui::SetItemTooltip("During combat: Game camera, Free camera, Fight overview, then Game camera. Follow fighter remains available here. Select is reserved for cycling while enabled.");
+    bool passthrough=Port_Setting("spectator_button_passthrough",0)!=0;
+    if(ImGui::Checkbox("Button passthrough while in spectate mode",&passthrough)) {
+        Port_SettingSave("spectator_button_passthrough",passthrough);Port_SettingsWrite();
+    }
+    ImGui::SetItemTooltip("Keep controlling your fighter with buttons in manual spectator views. Analog sticks control the camera; shoulder buttons, triggers and stick clicks control the fighter. Game camera restores full control. Photo Mode and automatic views after defeat keep their normal controls.");
     ImGui::TextWrapped("A manual selection overrides automatic death-spectator views. Each new match starts with Game camera.");
     int mode=PortSpectator_Mode();
     const char *modes[]={"Game camera","Free camera","Follow fighter","Fight overview"};
@@ -2744,8 +2749,8 @@ static void spectator_tab(void) {
     if(ImGui::Button(Port_TagText("Reset camera")))PortSpectator_ResetCamera();
     ImGui::EndDisabled();ImGui::Separator();
     ImGui::TextWrapped("%s",Port_TagText("Close F1 to control the camera. WASD: move; Q/E: descend/ascend; arrows: turn; Shift: accelerate; +/-: zoom."));
-    ImGui::TextWrapped("%s",Port_TagText("Controller: left stick moves, right stick turns, L1/R1 descend/ascend, L2/R2 zoom, L3 accelerates."));
-    ImGui::TextWrapped("%s",Port_TagText("Camera controls replace your local fighter controls during battle. Start still opens the pause menu."));
+    ImGui::TextWrapped("%s",Port_TagText(passthrough?"Controller: left stick moves, right stick turns. All other buttons control your fighter; Select cycles views when enabled.":"Controller: left stick moves, right stick turns, L1/R1 descend/ascend, L2/R2 zoom, L3 accelerates."));
+    ImGui::TextWrapped("%s",Port_TagText(passthrough?"Game camera restores both sticks to your fighter. Start still opens the pause menu.":"Camera controls replace your local fighter controls during battle. Start still opens the pause menu."));
 }
 
 static void name_text(ImDrawList *dl, const char *text, float x, float y, float w, float h, bool centre) {

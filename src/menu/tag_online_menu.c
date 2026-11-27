@@ -663,16 +663,16 @@ s32 TagOnlineMenu_Frame(void) {
     if(pendingPick>=0) {
         TagNetConfig c=room.config;TsMember member;TagNetStatus after;
         s32 id=pendingPick,k,level=c.cpuLevel[id]<0?c.cpu:c.cpuLevel[id],accepted,oldFocus=focus;
-        pendingPick=-1;memset(&member,0,sizeof(member));member.chara=room.customLocal[id]>=0?PORT_WARRIOR_FIRST_CHARACTER+room.customLocal[id]:c.chara[id];member.color=c.costume[id];
+        pendingPick=-1;memset(&member,0,sizeof(member));member.chara=room.customLocal[id]>=0?PortWarriors_LocalCharacter(room.customLocal[id]):c.chara[id];member.color=c.costume[id];
         for(k=0;k<8;k++)member.items.id[k]=c.items[id][k];
         TagOnlineMenu_Close();
         accepted=TeamSel_PickOnline(&member,c.owner[id]<0,&level,c.revision);
         TagNet_Status(&after);
         if(accepted && after.phase==2 && after.config.revision==c.revision) {
-            if(member.chara>=PORT_WARRIOR_FIRST_CHARACTER && member.chara<PORT_WARRIOR_FIRST_CHARACTER+PORT_WARRIOR_PLAYABLE_MAX) {
+            if(PortWarriors_LocalIndex(member.chara)>=0 && PortWarriors_LocalIndex(member.chara)<PORT_WARRIOR_PLAYABLE_MAX) {
                 TlLoadout loadout;loadout.chara=member.chara;loadout.costume=member.color;
                 for(k=0;k<8;k++)loadout.items[k]=member.items.id[k];
-                TagNet_ChooseCustom(member.chara-PORT_WARRIOR_FIRST_CHARACTER,id,(unsigned)c.revision,&loadout,level);
+                TagNet_ChooseCustom(PortWarriors_LocalIndex(member.chara),id,(unsigned)c.revision,&loadout,level);
             }else {
                 TlLoadout loadout;loadout.chara=member.chara;loadout.costume=member.color;
                 for(k=0;k<8;k++)loadout.items[k]=member.items.id[k];

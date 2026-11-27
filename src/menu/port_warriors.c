@@ -4,6 +4,7 @@
 #include "menu/port_screen.h"
 #include "menu/warrior_native.h"
 #include "menu/warrior_fields.h"
+#include "plat_warriors.h"
 #include "menu/tbo_art.h"
 #include "sys/pad.h"
 
@@ -152,7 +153,7 @@ static void zw_update(void) {
         if(pressed&PADG_TRIANGLE){libraryRow=warrior+1;zw_page(ZW_LIBRARY);}
         else if(pressed&PADG_SELECT) {
             if(PortZwNative_Dirty())zw_info("Save your changes before starting a playtest.");
-            else {playtestRequest=250+warrior;zw_end();}
+            else {playtestRequest=PortWarriors_LocalCharacter(warrior);zw_end();}
         }
         else if(pressed&PADG_START){if(PortZwNative_Build())zw_page(ZW_BUILD);else zw_status();}
         else if((pressed&PADG_CIRCLE) && zw_field(row)==ZW_HAIR && zw_native_editable(ZW_EXTRA1)) {
@@ -258,15 +259,15 @@ static void zw_backdrop(void) {
 static void zw_draw(void) {
     s32 i,first,count,preview=-1;char line[512],heading[192];
     Ps_PageSet();Ps_SetShift(0);Ps_Align(0);zw_backdrop();Ps_PromptsClear();
-    if(page==ZW_LIBRARY && libraryRow>0 && libraryRow<=PortZwNative_Count())preview=250+libraryRow-1;
-    else if(page==ZW_EDIT || page==ZW_CHOOSE || page==ZW_COLOUR || page==ZW_FORMS || page==ZW_SURFACES || page==ZW_SCALE)preview=250+warrior;
+    if(page==ZW_LIBRARY && libraryRow>0 && libraryRow<=PortZwNative_Count())preview=PortWarriors_LocalCharacter(libraryRow-1);
+    else if(page==ZW_EDIT || page==ZW_CHOOSE || page==ZW_COLOUR || page==ZW_FORMS || page==ZW_SURFACES || page==ZW_SCALE)preview=PortWarriors_LocalCharacter(warrior);
     if(page==ZW_EDIT || page==ZW_CHOOSE || page==ZW_COLOUR || page==ZW_FORMS || page==ZW_SURFACES || page==ZW_SCALE) {
         // Browsing never starts a rebuild. Cross first applies the choice to
         // the draft; only that assembled draft is then sent to the helper.
         previewStarted=1;previewState=PortZwNative_Preview(-1,0);
         if(previewState==1 || previewState==2)preview=250;
     }else if(page==ZW_NOTICE && previewStarted) {
-        preview=previewState==1 || previewState==2?250:250+warrior;
+        preview=previewState==1 || previewState==2?PORT_WARRIOR_FIRST_CHARACTER:PortWarriors_LocalCharacter(warrior);
     }else if(previewStarted) {
         PortZwNative_PreviewStop();previewStarted=0;previewState=0;
     }

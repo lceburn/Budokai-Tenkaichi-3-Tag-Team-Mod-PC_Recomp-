@@ -114,15 +114,15 @@ int PortGame_WarriorCharacter(int index) {
     /* Registration may initialize a private session on the first lookup. */
     (void)warrior_count();
     if(index>=PORT_WARRIOR_LOCAL_KEY && index<PORT_WARRIOR_LOCAL_KEY+PORT_WARRIOR_PLAYABLE_MAX)
-        return PORT_WARRIOR_FIRST_CHARACTER+index-PORT_WARRIOR_LOCAL_KEY;
-    return index<0?-1:(PortWarriors_SessionActive()?PORT_WARRIOR_SESSION_FIRST:PORT_WARRIOR_FIRST_CHARACTER)+index;
+        return PortWarriors_LocalCharacter(index-PORT_WARRIOR_LOCAL_KEY);
+    return index<0?-1:PortWarriors_SessionActive()?PORT_WARRIOR_SESSION_FIRST+index:PortWarriors_LocalCharacter(index);
 }
 int PortGame_WarriorIndex(int c) {
     int count=warrior_count();
-    if(localPicker && c>=PORT_WARRIOR_FIRST_CHARACTER &&
-       c<PORT_WARRIOR_FIRST_CHARACTER+PortWarriors_LocalCount())
-        return PORT_WARRIOR_LOCAL_KEY+c-PORT_WARRIOR_FIRST_CHARACTER;
-    int index=c-(PortWarriors_SessionActive()?PORT_WARRIOR_SESSION_FIRST:PORT_WARRIOR_FIRST_CHARACTER);
+    int local=PortWarriors_LocalIndex(c);
+    if(localPicker && local>=0 && local<PortWarriors_LocalCount())
+        return PORT_WARRIOR_LOCAL_KEY+local;
+    int index=PortWarriors_SessionActive()?c-PORT_WARRIOR_SESSION_FIRST:local;
     return index>=0 && index<count?index:-1;
 }
 int PortGame_IsCustomCharacter(int c) {return PortGame_WarriorIndex(c)>=0;}
@@ -151,7 +151,7 @@ void *PortGame_GaugeTable(void *original) {
     memcpy(table,original,250*16);
     for(i=0;i<n;i++)memcpy(table+PortGame_WarriorCharacter(i)*16,(unsigned char *)original+PortGame_TableCharacter(PortGame_WarriorCharacter(i))*16,16);
     if(localPicker)for(i=0;i<PortWarriors_LocalCount();i++)
-        memcpy(table+(PORT_WARRIOR_FIRST_CHARACTER+i)*16,(unsigned char *)original+PortGame_TableCharacter(PORT_WARRIOR_FIRST_CHARACTER+i)*16,16);
+        memcpy(table+PortWarriors_LocalCharacter(i)*16,(unsigned char *)original+PortGame_TableCharacter(PortWarriors_LocalCharacter(i))*16,16);
     return table;
 }
 static int warrior_file(int c,int role) {
@@ -203,7 +203,6 @@ int PortGame_WarriorChip(int c) {
 int PortGame_WarriorGrid(void *cells,int count,int capacity) {
     int (*grid)[9]=cells,groups[PORT_WARRIOR_SESSION_MAX],n=warrior_count();
     int i,j,k,end=count,added=0,padded,changed;
-    int first=localPicker?PORT_WARRIOR_FIRST_CHARACTER:PortGame_WarriorCharacter(0);
     if(localPicker)n=PortWarriors_LocalCount();
     if(n<1 || n>PORT_WARRIOR_SESSION_MAX || !grid || count<0 || count>capacity)return count;
     for(i=0;i<n;i++)groups[i]=i;
@@ -212,7 +211,9 @@ int PortGame_WarriorGrid(void *cells,int count,int capacity) {
     do {
         changed=0;
         for(i=0;i<n;i++)for(j=0;j<4;j++) {
-            int target=PortGame_WarriorFormTarget(first+i,j)-first,low,high;
+            int character=localPicker?PortWarriors_LocalCharacter(i):PortGame_WarriorCharacter(i);
+            int target=PortGame_WarriorIndex(PortGame_WarriorFormTarget(character,j)),low,high;
+            if(target>=PORT_WARRIOR_LOCAL_KEY)target-=PORT_WARRIOR_LOCAL_KEY;
             if(target<0 || target>=n || groups[target]==groups[i])continue;
             low=groups[i]<groups[target]?groups[i]:groups[target];
             high=groups[i]>groups[target]?groups[i]:groups[target];
@@ -229,8 +230,8 @@ int PortGame_WarriorGrid(void *cells,int count,int capacity) {
     padded=(end+added+6)/7*7;
     if(padded>capacity)return count; /* No partial writes on a full roster. */
     for(i=0;i<n;i++)if(groups[i]==i) {
-        int forms=0;memset(grid[end],0,sizeof(grid[end]));grid[end][0]=first+i;
-        for(j=0;j<n;j++)if(groups[j]==i)grid[end][2+forms++]=first+j;
+        int forms=0;memset(grid[end],0,sizeof(grid[end]));grid[end][0]=localPicker?PortWarriors_LocalCharacter(i):PortGame_WarriorCharacter(i);
+        for(j=0;j<n;j++)if(groups[j]==i)grid[end][2+forms++]=localPicker?PortWarriors_LocalCharacter(j):PortGame_WarriorCharacter(j);
         grid[end][1]=forms>1?forms:0;end++;
     }
     while(end<padded){memset(grid[end],0,sizeof(grid[end]));grid[end++][0]=164;}
@@ -335,7 +336,7 @@ int PortGame_ModelCharacter(int id) {
     int i;
     if(localPicker && id>=PORT_WARRIOR_FILE_BASE+PORT_WARRIOR_LOCAL_KEY*PORT_WARRIOR_FILE_STRIDE &&
        id<PORT_WARRIOR_FILE_BASE+(PORT_WARRIOR_LOCAL_KEY+PortWarriors_LocalCount())*PORT_WARRIOR_FILE_STRIDE)
-        return PORT_WARRIOR_FIRST_CHARACTER+(id-PORT_WARRIOR_FILE_BASE)/PORT_WARRIOR_FILE_STRIDE-PORT_WARRIOR_LOCAL_KEY;
+        return PortWarriors_LocalCharacter((id-PORT_WARRIOR_FILE_BASE)/PORT_WARRIOR_FILE_STRIDE-PORT_WARRIOR_LOCAL_KEY);
     if(id>=PORT_WARRIOR_FILE_BASE && id<PORT_WARRIOR_FILE_BASE+warrior_count()*PORT_WARRIOR_FILE_STRIDE)
         return PortGame_WarriorCharacter((id-PORT_WARRIOR_FILE_BASE)/PORT_WARRIOR_FILE_STRIDE);
     if (!PortGame_IsBT4()) return (id-1424)/10;
@@ -421,7 +422,7 @@ int PortGame_WarriorFormTarget(int chara,int slot) {
     int index=PortGame_WarriorIndex(chara),target,character;
     if(!PortGame_IsCustomCharacter(chara) || slot<0 || slot>=4)return 0xFF;
     target=PortWarriors_FormTarget(index,slot);
-    character=index>=PORT_WARRIOR_LOCAL_KEY?PORT_WARRIOR_FIRST_CHARACTER+target:PortGame_WarriorCharacter(target);
+    character=index>=PORT_WARRIOR_LOCAL_KEY?PortWarriors_LocalCharacter(target):PortGame_WarriorCharacter(target);
     /* First supported manifest family: cost, standard sequence, basic change,
        no prop override, preserve damage. Other families remain unavailable. */
     if(target<0 || (index>=PORT_WARRIOR_LOCAL_KEY?target==index-PORT_WARRIOR_LOCAL_KEY:target==index) || !PortGame_IsCustomCharacter(character) ||
@@ -603,6 +604,18 @@ int PortGame_CheckAnimation(void *data,int size) {
     return (int)bad;
 }
 
+int PortGame_WarriorAuraOverride(const void *model,int size) {
+    const unsigned char *m=model,*table;unsigned index,start,end,count,at,preset;
+    if(!PortGame_UseEmbeddedModel(model,size))return -1;
+    index=u32(m)==253?253:26;start=u32(m+index*4)&~3u;end=u32(m+(index+1)*4)&~3u;
+    if(end<start || end-start<16)return -1;
+    table=m+start;
+    if(memcmp(table,"BT3WARRI",8) && memcmp(table,"BT4WARRI",8))return -1;
+    count=u32(table+12);if(count>(end-start-16)/8)return -1;
+    at=16+count*8;
+    if(end-start-at<8 || memcmp(table+at,"AURA",4))return -1;
+    preset=u32(table+at+4);return preset<=10?(int)preset:-1;
+}
 int PortGame_AdjustWarriorAnimation(const void *model,int modelSize,int motion,void *animation,int animationSize) {
     const unsigned char *m=model,*table;
     unsigned char *a=animation;

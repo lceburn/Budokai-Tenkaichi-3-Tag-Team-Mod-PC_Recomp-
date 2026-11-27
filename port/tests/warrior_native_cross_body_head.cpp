@@ -20,7 +20,7 @@ int main(int argc,char **argv) {
     assert(WarriorNativeTextureBindings::textures(body.entries[11],retained,error));
     assert(WarriorNativeTextureBindings::textures(result.entries[11],combined,error));
     for(const auto &t:retained)assert(WarriorNativeTextureBindings::destination(t,combined));
-    unsigned indexed=0;for(const auto &t:combined)indexed+=t.psm!=0;
+    unsigned indexed=0;for(const auto &t:combined)indexed+=t.psm!=0 && !t.auxiliary;
     assert(static_cast<unsigned char>(result.entries[2][0x4e])==0);
     assert(static_cast<unsigned char>(result.entries[2][0x4f])==indexed);
     assert(static_cast<unsigned char>(result.entries[2][0x50])==indexed);

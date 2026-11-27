@@ -37,10 +37,11 @@ inline bool compose(const WarriorNativePack::Pack &body,const WarriorNativePack:
        !WarriorNativeTextureBindings::textures(faceOwner.entries[11],headTextures,error))return false;
     size_t first=plan.base.front().offset;std::string mesh=bodyMesh.substr(0,first);
     unsigned normal=0,shades=0;
-    for(const auto &t:textures)if(t.psm==0)shades++;else normal++;
+    for(const auto &t:textures)if(t.psm==0)shades++;else if(!t.auxiliary)normal++;
     if(normal>255 || shades>255){error="Native head material counts are too large.";return false;}
     mesh[0x4e]=0;mesh[0x4f]=char(normal);
     mesh[0x50]=char(normal);mesh[0x51]=char(shades);
+    if(!WarriorNativeTextureBindings::fade_header(mesh,bodyMesh,body.entries[11],combined,error))return false;
     unsigned face=static_cast<unsigned char>(faceOwner.entries[2][0x4c]);
     if(face>=headTextures.size()){error="The donor face material is invalid.";return false;}
     auto faceTexture=WarriorNativeTextureBindings::destination(headTextures[face],textures);

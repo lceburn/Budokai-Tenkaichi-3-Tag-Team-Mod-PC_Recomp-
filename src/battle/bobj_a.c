@@ -2651,10 +2651,14 @@ void BtlObj_InitFlags(BObj *obj) {
 #ifdef PORT
 /* Model binding initializes colours before assigning its new identity. Apply
    saved custom light again once BtlObj_Setup has finished that assignment. */
+int BtlObj_GetWarriorAuraPreset(BObj *obj) {
+    if(!obj || !obj->slot)return -1;
+    return PortGame_WarriorAuraOverride(obj->slot->file[0].buf,obj->slot->file[0].size);
+}
 void BtlObj_ApplyWarriorAura(BObj *obj) {
     if(((BobjObj *)obj)->type==0) {
         s32 rgb=PortGame_WarriorAuraColour(((BobjObj *)obj)->chara);
-        if(rgb>0) {
+        if(rgb>=0) {
             f32 red=rgb&255,green=(rgb>>8)&255,blue=(rgb>>16)&255,peak=red;
             if(green>peak)peak=green;if(blue>peak)peak=blue;if(peak<1.0f)peak=1.0f;
             obj->state.preset[0]=63.0f+192.0f*red/peak;

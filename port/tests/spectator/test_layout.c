@@ -16,6 +16,7 @@ float Port_WideFactor(void){return 4.f/3;}
 void Vec4_Set(Vec4 *v,float x,float y,float z,float w){v->x=x;v->y=y;v->z=z;v->w=w;}
 void Vec4_Copy(Vec4 *a,Vec4 *b){*a=*b;}
 int PortSpectator_Target(void){return 2;}
+void PortSpectator_PhotoFrameDone(void){}
 int TagFusion_Owner(int actor){return actor;}
 int TagTeam_CameraActor(int actor){return actor;}
 int BattleSide_GetObjId(int actor){return 100+actor;}

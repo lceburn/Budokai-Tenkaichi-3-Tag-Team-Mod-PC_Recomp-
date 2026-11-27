@@ -157,7 +157,7 @@ def main():
         'Native LAN/online rooms support ordinary fighters and saved customs in the standard picker.\n'
         'Selected customs and linked transformations download for the room only; other players are not added to your saved library.\n'
         'Creator sources are prepared from your local BT4 data during installation/update; no BT3 creator is needed.\n'
-        'The saved library limit remains four custom forms. Room capacity is nineteen custom forms total, counting base fighters and transformations.\n'
+        'The saved library supports six custom characters/forms. Room capacity is nineteen custom forms total, counting base fighters and transformations.\n'
         'In Z Warriors, Square duplicates a saved fighter as an independent editable copy.\n'
         'Your saves are in saves/. Setup copies imported saves; it never changes the original.\n'
         'English and Spanish mod menus are included. Disc audio comes from your selected disc.\n'

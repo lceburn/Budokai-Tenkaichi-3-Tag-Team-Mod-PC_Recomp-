@@ -10,6 +10,7 @@ struct Texture {
     unsigned tbp,cbp,psm;uint64_t format;
     std::string pixels,palette;
     std::string header,pixelUpload,paletteUpload;
+    bool auxiliary=false; // Indexed uploads after the shading bank are fade resources.
 };
 inline uint64_t wide(const std::string &data,size_t at) {
     return WarriorNativePack::word(data,at)|(uint64_t(WarriorNativePack::word(data,at+4))<<32);
@@ -20,7 +21,7 @@ inline bool textures(const std::string &data,std::vector<Texture> &out,std::stri
     if(!count || count>128 || table<8 || table>data.size() || count*64>data.size()-table) {
         error="Invalid native texture table.";return false;
     }
-    std::vector<Texture> result;
+    std::vector<Texture> result;bool shading=false;
     for(unsigned i=0;i<count;i++) {
         size_t e=table+i*64,p=size_t(WarriorNativePack::word(data,e))*4,c=size_t(WarriorNativePack::word(data,e+4))*4;
         auto bytes=WarriorNativePack::word(data,e+8),colours=WarriorNativePack::word(data,e+12);
@@ -33,13 +34,15 @@ inline bool textures(const std::string &data,std::vector<Texture> &out,std::stri
             tex0&~(UINT64_C(0x3fff)|(UINT64_C(0x3fff)<<37)),data.substr(p+96,bytes-96),c?data.substr(c+96,colours-96):std::string(),
             data.substr(e,64),data.substr(p,bytes),c?data.substr(c,colours):std::string()};
         if(t.tbp>0x3fff || t.cbp>0x3fff){error="Native texture addresses exceed GS fields.";return false;}
+        if(t.psm==0)shading=true;
+        else t.auxiliary=shading;
         result.push_back(std::move(t));
     }
     out=std::move(result);return true;
 }
 inline const Texture *destination(const Texture &source,const std::vector<Texture> &target) {
     const Texture *found=nullptr;
-    for(const auto &t:target)if(t.psm==source.psm && t.format==source.format && t.pixels==source.pixels && t.palette==source.palette) {
+    for(const auto &t:target)if(t.auxiliary==source.auxiliary && t.psm==source.psm && t.format==source.format && t.pixels==source.pixels && t.palette==source.palette) {
         if(found && (found->tbp!=t.tbp || found->cbp!=t.cbp))return nullptr;
         found=&t;
     }
@@ -50,12 +53,12 @@ inline const Texture *destination(const Texture &source,const std::vector<Textur
 // cross binding without guessing a substitute texture.
 inline bool material(const std::vector<Texture> &source,unsigned tbp,unsigned cbp,Texture &out) {
     const Texture *direct=nullptr,*pixels=nullptr,*palette=nullptr;
-    for(const auto &t:source)if(t.psm!=0) {
+    for(const auto &t:source)if(t.psm!=0 && !t.auxiliary) {
         auto extent=WarriorNativePack::word(t.header,16);
         if(t.tbp<=0x3fff && extent && extent<=0x4000-t.tbp && tbp>=t.tbp && tbp-t.tbp<extent &&
-           (!pixels || t.tbp>=pixels->tbp))pixels=&t;
-        if(t.cbp==cbp)palette=&t;
-        if(t.tbp==tbp && t.cbp==cbp)direct=&t;
+           (!pixels || t.tbp>pixels->tbp))pixels=&t;
+        if(!palette && t.cbp==cbp)palette=&t;
+        if(!direct && t.tbp==tbp && t.cbp==cbp)direct=&t;
     }
     if(direct){out=*direct;return true;}
     if(!pixels || !palette || palette->palette.empty() ||
@@ -96,7 +99,7 @@ inline bool relocate(std::string &mesh,const std::string &source,const std::stri
                 auto shadow=WarriorNativePack::word(mesh,at+40);
                 const Texture *normal=nullptr,*shade=nullptr;
                 for(const auto &t:from) {
-                    if(t.psm!=0 && t.tbp==(low&0x3fff) && t.cbp==((high>>5)&0x3fff))normal=&t;
+                    if(!normal && t.psm!=0 && !t.auxiliary && t.tbp==(low&0x3fff) && t.cbp==((high>>5)&0x3fff))normal=&t;
                     if(t.psm==0 && t.tbp==((shadow>>5)&0x3fff))shade=&t;
                 }
                 Texture cross;
@@ -141,14 +144,14 @@ inline bool used_textures(const std::string &mesh,const std::vector<Texture> &fr
                 bool normal=false,shade=false;
                 for(size_t i=0;i<from.size();i++) {
                     auto &t=from[i];
-                    if(t.psm!=0 && t.tbp==(low&0x3fff) && t.cbp==((high>>5)&0x3fff)){result.insert(i);normal=true;}
+                    if(!normal && t.psm!=0 && !t.auxiliary && t.tbp==(low&0x3fff) && t.cbp==((high>>5)&0x3fff)){result.insert(i);normal=true;}
                     if(t.psm==0 && t.tbp==((shadow>>5)&0x3fff)){result.insert(i);shade=true;}
                 }
                 if(!normal) {
                     Texture cross;
                     if(material(from,low&0x3fff,(high>>5)&0x3fff,cross)) {
                         normal=true;bool found=false;
-                        for(size_t i=0;i<from.size();i++)if(from[i].psm==cross.psm && from[i].format==cross.format &&
+                        for(size_t i=0;i<from.size();i++)if(!from[i].auxiliary && from[i].psm==cross.psm && from[i].format==cross.format &&
                             from[i].pixels==cross.pixels && from[i].palette==cross.palette){result.insert(i);found=true;}
                         if(!found) {
                             for(const auto &t:crossBindings)if(t.psm==cross.psm && t.format==cross.format && t.pixels==cross.pixels && t.palette==cross.palette)found=true;
@@ -192,7 +195,7 @@ inline bool merge(const std::string &bodyData,const std::string &donorData,const
     // rebinding has one destination for both retained and imported parts.
     std::vector<Texture> combined;
     auto append=[&](const Texture &source) {
-        for(const auto &t:combined)if(t.psm==source.psm && t.format==source.format &&
+        for(const auto &t:combined)if(t.auxiliary==source.auxiliary && t.psm==source.psm && t.format==source.format &&
             t.pixels==source.pixels && t.palette==source.palette)return;
         combined.push_back(source);
     };
@@ -224,8 +227,10 @@ inline bool merge(const std::string &bodyData,const std::string &donorData,const
     }
     for(const auto &t:used)append(t);
     if(combined.size()>128){error="The combined texture table exceeds the model limit.";return false;}
-    // Indexed textures and shading uploads have separate address spaces.
-    std::stable_sort(combined.begin(),combined.end(),[](const Texture &a,const Texture &b){return (a.psm!=0)>(b.psm!=0);});
+    // Keep fade uploads out of the per-frame material range. They can share
+    // addresses with ordinary materials, but are uploaded only by the fade pass.
+    auto bank=[](const Texture &t){return t.auxiliary?2:t.psm==0?1:0;};
+    std::stable_sort(combined.begin(),combined.end(),[&](const Texture &a,const Texture &b){return bank(a)<bank(b);});
     std::string result(32+combined.size()*64,'\0');result.replace(0,32,bodyData.substr(0,32));
     WarriorNativePack::put(result,0,unsigned(combined.size()));WarriorNativePack::put(result,4,8);
     unsigned normal=0,shade=0,palette=0;
@@ -245,6 +250,39 @@ inline bool merge(const std::string &bodyData,const std::string &donorData,const
         if(result.size()>WarriorNativePack::Limit){error="The combined texture resource is too large.";return false;}
     }
     std::vector<Texture> checked;if(!textures(result,checked,error))return false;
+    // Restore the body's intentional fade aliases after packing. A fade upload
+    // must overwrite the corresponding ordinary pixel window and palette.
+    for(const auto &aux:body)if(aux.auxiliary) {
+        const Texture *pixels=nullptr,*paletteSource=nullptr;
+        for(const auto &t:body)if(t.psm!=0 && !t.auxiliary) {
+            unsigned extent=WarriorNativePack::word(t.header,16);
+            if(aux.tbp>=t.tbp && aux.tbp-t.tbp<extent && (!pixels || t.tbp>pixels->tbp))pixels=&t;
+            if(!paletteSource && t.cbp==aux.cbp)paletteSource=&t;
+        }
+        auto dest=destination(aux,checked),pixelDest=pixels?destination(*pixels,checked):nullptr,
+             paletteDest=paletteSource?destination(*paletteSource,checked):dest;
+        if(!dest || !pixelDest || !paletteDest){error="Missing native fade texture binding.";return false;}
+        size_t e=32+size_t(dest-checked.data())*64;
+        WarriorNativePack::put(result,e+32,pixelDest->tbp+aux.tbp-pixels->tbp);
+        WarriorNativePack::put(result,e+36,paletteDest->cbp);
+    }
     out=std::move(result);return true;
+}
+inline bool fade_header(std::string &mesh,const std::string &sourceMesh,const std::string &sourceTextures,
+                        const std::string &targetTextures,std::string &error) {
+    if(mesh.size()<0x54 || sourceMesh.size()<0x54){error="Missing native fade header.";return false;}
+    std::vector<Texture> from,to;
+    if(!textures(sourceTextures,from,error) || !textures(targetTextures,to,error))return false;
+    auto mapped=[&](unsigned i,int &out) {
+        if(i>=from.size())return false;
+        auto dest=destination(from[i],to);if(!dest)return false;out=int(dest-to.data());return out<=255;
+    };
+    int fade,first=-1,next;unsigned start=(unsigned char)sourceMesh[0x52],count=(unsigned char)sourceMesh[0x53];
+    if(!mapped((unsigned char)sourceMesh[0x4d],fade)){error="Missing native fade-pass texture.";return false;}
+    for(unsigned i=0;i<count;i++) {
+        if(!mapped(start+i,next) || (i && next!=first+int(i))){error="Incompatible native fade upload range.";return false;}
+        if(!i)first=next;
+    }
+    mesh[0x4d]=char(fade);mesh[0x52]=char(count?first:0);mesh[0x53]=char(count);return true;
 }
 }

@@ -73,8 +73,9 @@ inline bool replace(const WarriorNativePack::Pack &body,const WarriorNativePack:
     if(!WarriorNativeTextureBindings::textures(body.entries[11],original,error) ||
        !WarriorNativeTextureBindings::textures(textures,combined,error))return false;
     std::string mesh=bodyMesh.substr(0,base.front().offset);unsigned normal=0,shades=0;
-    for(const auto &t:combined)if(t.psm==0)shades++;else normal++;
+    for(const auto &t:combined)if(t.psm==0)shades++;else if(!t.auxiliary)normal++;
     mesh[0x4e]=0;mesh[0x4f]=char(normal);mesh[0x50]=char(normal);mesh[0x51]=char(shades);
+    if(!WarriorNativeTextureBindings::fade_header(mesh,bodyMesh,body.entries[11],textures,error))return false;
     unsigned face=static_cast<unsigned char>(bodyMesh[0x4c]);
     if(face>=original.size()){error="Invalid native base face material.";return false;}
     auto faceTo=WarriorNativeTextureBindings::destination(original[face],combined);

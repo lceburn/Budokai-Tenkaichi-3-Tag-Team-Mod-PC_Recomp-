@@ -9,6 +9,7 @@ int Port_Setting(const char *key,int fallback) {
     if(!strcmp(key,"spectator_mode"))return mode;
     if(!strcmp(key,"spectator_camera"))return manualCamera;
     if(!strcmp(key,"spectator_select_cycle"))return selectCycle;
+    if(!strcmp(key,"spectator_button_passthrough"))return 1;
     return fallback;
 }
 void Port_SettingSave(const char *key,int value) {

@@ -84,6 +84,7 @@ inline bool common(std::string &data,unsigned colour,std::string &error) {
     WarriorNativePack::Pack pack;if(!WarriorNativePack::decode(data,pack,error))return false;
     auto result=data;
     for(size_t i=0;i<pack.entries.size();i++) {
+        if(i==7)continue; // Loop-camera tracks are not colourable effects.
         if(pack.flags[i] || pack.entries[i].empty())continue;
         WarriorNativePack::Pack nested;std::string ignored;
         if(!WarriorNativePack::decode(pack.entries[i],nested,ignored))continue;

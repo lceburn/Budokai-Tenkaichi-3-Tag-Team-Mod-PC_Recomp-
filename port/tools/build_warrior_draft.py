@@ -21,7 +21,7 @@ from inspect_warrior import fields, inspect_set, safe_name
 from warrior_colours import catalog as colour_catalog
 
 LIMIT = 128 * 1024
-MAX_FORMS = 4  # Current BT4 runtime identities, not a builder limitation.
+MAX_FORMS = 6  # Saved native library capacity; each form retains four direct links.
 
 
 def digest(path):
@@ -81,7 +81,7 @@ def family(drafts, mods, requested):
         raw, parsed = recipe(source / "warrior.txt")
         result[name] = (source, raw)
         if len(result) > MAX_FORMS:
-            raise ValueError("This BT4 prototype supports four custom forms at a time")
+            raise ValueError("The saved library supports six custom characters/forms")
         pending.extend(references(parsed))
     return result
 
@@ -231,7 +231,7 @@ def build(args):
                 raise ValueError("A new warrior requires explicit enable mode")
             wanted.append(name)
     if len(wanted) > MAX_FORMS or len({n.casefold() for n in wanted}) != len(wanted):
-        raise ValueError("This BT4 prototype supports four unique custom forms")
+        raise ValueError("The saved library supports six unique custom characters/forms")
     enabled_after=enabled_before or b""
     extra=[name for name in wanted if name not in current]
     if extra:

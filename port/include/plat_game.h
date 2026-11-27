@@ -13,6 +13,7 @@ int PortGame_IsCustomCharacter(int chara);
 /* Local library IDs and room IDs are different namespaces. */
 int PortGame_WarriorCharacter(int index);
 int PortGame_WarriorIndex(int chara);
+int PortGame_WarriorAuraOverride(const void *model,int size);
 int PortGame_TableCharacter(int chara);
 int PortGame_UsesBT4Rules(int chara);
 /* Basic named form links only; returns 0xFF for unsupported/missing links. */

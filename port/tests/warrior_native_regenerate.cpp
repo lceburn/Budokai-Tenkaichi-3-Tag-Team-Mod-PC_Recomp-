@@ -20,11 +20,12 @@ int main(int argc,char **argv) {
         assert(WarriorRecipe::write(source/name,"old\n"));assert(WarriorRecipe::write(stage/name,"new\n"));
     }
     std::vector<FileEdit> files;std::string error;
-    assert(plan(source,stage,files,error) && files.size()==7);
+    assert(plan(source,stage,files,error) && files.size()==8);
     for(unsigned i=0;i<4;i++)assert(files[i].path==source/a[i]);
     assert(publish(root,files,error));
     std::string raw;assert(read_file(source/"Old_anm.pak",raw,true) && raw=="new");
-    assert(read_file(source/".warrior_built",raw) && raw==oldManifest);
+    auto refreshed=oldManifest;refreshed.replace(0,12,"#warrior 48\n");
+    assert(read_file(source/".warrior_built",raw) && raw==refreshed);
     assert(!fs::exists(source/"New_anm.pak"));
     // Portraits publish under the original routed names, including both members.
     for(unsigned i=4;i<7;i++)assert(WarriorRecipe::write(stage/b[i],std::string("portrait\0bytes",14)));

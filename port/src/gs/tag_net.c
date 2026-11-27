@@ -459,7 +459,7 @@ void TagNet_Edit(const TagNetConfig *c) { SDL_LockSpinlock(&uiLock);pendingConfi
 int TagNet_CustomLocal(int character) {
     int i;for(i=0;i<PORT_WARRIOR_PLAYABLE_MAX;i++)
         if(customLocalRoom[i]>=PORT_WARRIOR_SESSION_FIRST && customLocalRoom[i]==character)
-            return PORT_WARRIOR_FIRST_CHARACTER+i;
+            return PortWarriors_LocalCharacter(i);
     return character;
 }
 void TagNet_ChooseCustom(int index,int fighter,unsigned revision,const TlLoadout *selection,int cpuLevel) {

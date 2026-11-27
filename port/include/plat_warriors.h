@@ -16,13 +16,22 @@ enum { PORT_WARRIOR_CHIP=PORT_WARRIOR_RESOURCES };
 /* Keep existing virtual identities stable as costume families grow. */
 enum { PORT_WARRIOR_MODEL_3=10, PORT_WARRIOR_DAMAGE_3,
        PORT_WARRIOR_MODEL_4, PORT_WARRIOR_DAMAGE_4, PORT_WARRIOR_FILE_ROLES };
-enum { PORT_WARRIOR_FIRST_CHARACTER=250, PORT_WARRIOR_PLAYABLE_MAX=4,
+enum { PORT_WARRIOR_FIRST_CHARACTER=250, PORT_WARRIOR_PLAYABLE_MAX=6,
        PORT_WARRIOR_FILE_BASE=0x40000, PORT_WARRIOR_FILE_STRIDE=16 };
 /* Room identities do not occupy the legacy byte-sized local character range.
    Capacity counts base fighters AND every linked transformation. */
 enum { PORT_WARRIOR_SESSION_FIRST=512, PORT_WARRIOR_SESSION_MAX=19 };
 /* Read-only saved-local resource keys, separate from the active room registry. */
 enum { PORT_WARRIOR_LOCAL_KEY=128 };
+/* Preserve existing local identities and skip the game's 0xFF "no fighter"
+   sentinel. The sixth saved form uses 256; room identities remain separate. */
+static inline int PortWarriors_LocalCharacter(int index) {
+    return index<0?-1:PORT_WARRIOR_FIRST_CHARACTER+index+(index>=5);
+}
+static inline int PortWarriors_LocalIndex(int character) {
+    return character<PORT_WARRIOR_FIRST_CHARACTER || character==255?-1:
+        character-PORT_WARRIOR_FIRST_CHARACTER-(character>255);
+}
 /* Main-menu/lobby boundary only. Each root must be a validated, relative
    .warrior-sessions/<session>/<form> directory. Activation is all-or-nothing;
    passing count=0 restores the local registry without writing its library. */

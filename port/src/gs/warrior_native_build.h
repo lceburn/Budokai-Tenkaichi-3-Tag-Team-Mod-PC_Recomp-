@@ -139,10 +139,12 @@ inline bool publish(const fs::path &root,const std::vector<FileEdit> &files,
     for(const auto &file:files) {
         auto actual=fs::canonical(file.path,ec);
         auto folder=actual.parent_path();
+        bool refreshMarker=actual.filename()==".warrior_built" && file.original.compare(0,12,"#warrior 47\n")==0 &&
+            file.edited==std::string("#warrior 48\n")+file.original.substr(12);
         if(file.portrait && folder.filename()=="pzs3us1")folder=folder.parent_path();
         if(ec || fs::is_symlink(file.path,ec) || ec || actual!=file.path ||
            folder.parent_path()!=mods || !seen.insert(actual).second ||
-           (file.portrait?!portrait_name(actual.lexically_relative(folder).generic_u8string()):file.model?!model_name(actual.filename().u8string()):file.resource?!resource_name(actual.filename().u8string()):actual.filename()!="warrior.txt" && actual.filename()!="mod.txt" && actual.filename()!="native-colours.tsv")) {
+           (file.portrait?!portrait_name(actual.lexically_relative(folder).generic_u8string()):file.model?!model_name(actual.filename().u8string()):file.resource?!resource_name(actual.filename().u8string()):actual.filename()!="warrior.txt" && actual.filename()!="mod.txt" && actual.filename()!="native-colours.tsv" && !refreshMarker)) {
             error="A native save path leaves its warrior folder.";return false;
         }
         std::string current;

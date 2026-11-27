@@ -42,6 +42,14 @@ int main(int argc,char **argv) {
     assert(!PortZwNative_ColourRefresh());
     assert(library.status=="Save your character first to edit its surface colours.");
     selected()->fresh=false;
+    assert(patch_field(selected()->edited,"head","Vegeta"));library.status="old error";
+    assert(!PortZwNative_ColourRefresh() && library.status=="Save your current parts first to refresh the surface colour choices.");
+    selected()->edited=selected()->original;
+    selected()->edited.raw="name=Refresh\nbody=Goku\nmoves=Goku\n";selected()->original=selected()->edited;
+    assert(write(selected()->source/".warrior_built","#warrior 47\n"));
+    fs::create_directory(root/"warrior-sources");assert(write(root/"warrior-sources/assets.tsv","fixture"));
+    assert(refresh_selected(*selected()));
+    assert(write(selected()->source/".warrior_built","#warrior 48\n"));assert(!refresh_selected(*selected()));
     assert(write(root/"mods/enabled.txt","First\n"));
     assert(PortZwNative_Open()==1 && PortZwNative_Selected()==0 && selected()->folder=="First");
     puts("PASS save/reopen keeps selected identity and edits; new character, reorder/removal and unsaved colour message");

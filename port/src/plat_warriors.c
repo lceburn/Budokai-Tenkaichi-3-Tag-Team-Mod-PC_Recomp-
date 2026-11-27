@@ -402,7 +402,7 @@ int PortWarriors_FormField(int index,int form,int field) {
 }
 void PortWarriors_TraceNode(int character,int node,int active,const void *matrix) {
     static unsigned char seen[PORT_WARRIOR_PLAYABLE_MAX][169];
-    const uint32_t *words=matrix;int index=character-PORT_WARRIOR_FIRST_CHARACTER;
+    const uint32_t *words=matrix;int index=PortWarriors_LocalIndex(character);
     if(!getenv("BT3_WARRIOR_TRACE") || index<0 || index>=PORT_WARRIOR_PLAYABLE_MAX ||
        node<0 || node>=169 || seen[index][node])return;
     seen[index][node]=1;

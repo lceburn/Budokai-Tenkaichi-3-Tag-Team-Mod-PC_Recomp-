@@ -9,6 +9,7 @@
 #include "warrior_native_attack_names.h"
 #include "warrior_native_delete.h"
 #include "warrior_stock_taunts.h"
+#include "../../include/plat_warriors.h"
 #include "../port_addr.h"
 #include "../../../include/menu/warrior_fields.h"
 #include <SDL3/SDL.h>
@@ -289,6 +290,10 @@ static Surface *colour_surface(int index) {
 extern "C" int PortZwNative_ColourRefresh() {
     auto e=selected();if(!e)return 0;
     if(e->fresh){library.status="Save your character first to edit its surface colours.";return 0;}
+    for(const char *key:{"body","hair","head","face","chest","waist","upperarms","forearms","hands","hips","shins","feet"})
+        if(e->original.get(key)!=e->edited.get(key)) {
+            library.status="Save your current parts first to refresh the surface colour choices.";return 0;
+        }
     if(!e->coloursOriginal) {
         std::vector<WarriorNativeMaterials::Material> materials;
         if(!WarriorNativeStock::generate(library.root,e->original,fs::path(),library.status,native_family(),e->folder,&materials))return 0;
@@ -415,7 +420,7 @@ extern "C" int PortZwNative_Write(int field,uint32_t value) {
 }
 static int new_warrior(int copyForm,bool linkForm) {
     auto &l=library;if(l.process)return -1;
-    if(l.entries.size()>=4){l.status="The current prototype supports four custom forms at a time.";return -1;}
+    if(l.entries.size()>=PORT_WARRIOR_PLAYABLE_MAX){l.status="The saved library supports six custom characters/forms.";return -1;}
     Draft entry;
     if(copyForm>=0 && copyForm<int(l.entries.size())) {
         entry.edited=l.entries[copyForm].edited;entry.source=l.entries[copyForm].source;
@@ -479,7 +484,7 @@ static int save_native_stock() {
     }
     if(!fresh || !WarriorNativeSources::generation_available(l.root))return 0;
     if(!WarriorNativeBuild::ensure_library(l.root,l.status))return -1;
-    if(l.entries.size()>4){l.status="The prototype supports four custom forms.";return -1;}
+    if(l.entries.size()>PORT_WARRIOR_PLAYABLE_MAX){l.status="The saved library supports six custom characters/forms.";return -1;}
     for(const auto &e:l.entries)if(!e.fresh) {
         std::string current;
         if(!read(e.source/"warrior.txt",current) || current!=e.original.raw) {
@@ -508,18 +513,24 @@ static int save_native_stock() {
     PortWarriors_Reload();PortZwNative_Open();l.nativeResult=1;
     l.status="Saved in BT4 without the creator helper. Your character is ready for the next fight.";return 1;
 }
+static bool refresh_selected(const Draft &entry) {
+    if(&entry!=selected() || entry.fresh || entry.original.raw!=entry.edited.raw || !WarriorNativeStock::supports(entry.edited))return false;
+    std::string built;
+    return read(entry.source/".warrior_built",built) && built.compare(0,12,"#warrior 47\n")==0 &&
+        WarriorNativeSources::generation_available(library.root);
+}
 static int save_native_stock_edits() {
     auto &l=library;bool changed=false;
     for(const auto &e:l.entries) {
         if(e.fresh)return 0;
-        if(e.original.raw==e.edited.raw)continue;
+        if(e.original.raw==e.edited.raw && !refresh_selected(e))continue;
         if(!WarriorNativeStock::supports(e.original) || !WarriorNativeStock::supports(e.edited))return 0;
         changed=true;
     }
     if(!changed || !WarriorNativeSources::generation_available(l.root))return 0;
     std::vector<WarriorNativeBuild::FileEdit> files;
     for(const auto &e:l.entries) {
-        if(e.original.raw==e.edited.raw)continue;
+        if(e.original.raw==e.edited.raw && !refresh_selected(e))continue;
         auto staged=l.root/".warrior-builds"/("native-edit-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()))/"Warrior";
         if(!WarriorNativeStock::generate(l.root,e.edited,staged,l.status,native_family(),e.folder))return -1;
         std::string current;
@@ -536,6 +547,7 @@ static int save_native_stock_edits() {
 }
 static int save_native_metadata() {
     auto &l=library;std::vector<WarriorNativeBuild::FileEdit> files;
+    if(selected() && refresh_selected(*selected()))return 0;
     bool resources=false,forms=false,effects=false;std::set<std::string> family;
     for(const auto &e:l.entries) {
         if(e.fresh || !WarriorNativeBuild::nonvisual_only(e.original,e.edited))return 0;
@@ -551,7 +563,7 @@ static int save_native_metadata() {
     if(effects && !WarriorNativeSources::generation_available(l.root))return 0;
     if(forms) {
         std::string enabled;
-        if(!read(l.root/"mods/enabled.txt",enabled) || enabled!=l.enabled || family.size()>4) {
+        if(!read(l.root/"mods/enabled.txt",enabled) || enabled!=l.enabled || family.size()>PORT_WARRIOR_PLAYABLE_MAX) {
             l.status="The warrior library changed. Reopen the creator before saving form links.";return -1;
         }
     }
@@ -607,7 +619,7 @@ static int save_native_metadata() {
                 if(!WarriorNativeBuild::read_file(path,original,true) || !WarriorNativePack::decode(original,pack,l.status))return -1;
                 if(voiceChanged && !WarriorNativePack::copy_entries(pack,voiceSource.pack,53,252,l.status))return -1;
                 if(styleChanged && !WarriorNativePack::copy_style(pack,styleSource.pack,l.status))return -1;
-                if(auraChanged && !WarriorNativeAura::apply(pack,auraSource.pack,l.status))return -1;
+                if(auraChanged && !WarriorNativeAura::apply(pack,auraSource.pack,l.status,!e.edited.get("aurafrom").empty()))return -1;
                 if(!WarriorNativePack::encode(pack,updated,l.status))return -1;
                 files.push_back({path,std::move(original),std::move(updated),true});
             }

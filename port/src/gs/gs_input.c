@@ -1003,9 +1003,11 @@ void PortInput_SpectatorSlot(int player,float *axes) {
         PortStickView sticks;PortInput_StickView(player,&sticks);
         axes[0]+=sticks.game[0][0];axes[1]-=sticks.game[0][1];
         axes[3]+=sticks.game[1][0];axes[4]-=sticks.game[1][1];
-        axes[2]+=(float)SDL_GetGamepadButton(pad,SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)-SDL_GetGamepadButton(pad,SDL_GAMEPAD_BUTTON_LEFT_SHOULDER);
-        axes[5]+=sticks.trigger[1]-sticks.trigger[0];
-        axes[6]=axes[6] || SDL_GetGamepadButton(pad,SDL_GAMEPAD_BUTTON_LEFT_STICK);
+        if(!(player==0 && PortSpectator_ConsumesInput() && Port_Setting("spectator_button_passthrough",0) && !PortSpectator_PhotoActive())) {
+            axes[2]+=(float)SDL_GetGamepadButton(pad,SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)-SDL_GetGamepadButton(pad,SDL_GAMEPAD_BUTTON_LEFT_SHOULDER);
+            axes[5]+=sticks.trigger[1]-sticks.trigger[0];
+            axes[6]=axes[6] || SDL_GetGamepadButton(pad,SDL_GAMEPAD_BUTTON_LEFT_STICK);
+        }
     }
 }
 void PortInput_Spectator(float *axes) { PortInput_SpectatorSlot(0,axes); }

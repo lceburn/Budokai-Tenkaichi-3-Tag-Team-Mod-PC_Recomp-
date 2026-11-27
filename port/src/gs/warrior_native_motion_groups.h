@@ -79,7 +79,7 @@ inline bool apply(WarriorNativePack::Pack &motions,const std::vector<Selection> 
 inline bool scales(WarriorNativePack::Pack &model,float bodyHeight,float movesHeight,float outfitHeight,
                    const std::vector<Selection> &selections,std::string &error,bool sameBodyMoves=false,
                    const std::vector<RangeScale> &attackScales={}) {
-    if(model.entries.size()<26 || !std::isfinite(bodyHeight) || !std::isfinite(movesHeight) || !std::isfinite(outfitHeight) || bodyHeight>=-.5f || movesHeight>=-.5f || outfitHeight>=-.5f) {
+    if(model.entries.size()<36 || !std::isfinite(bodyHeight) || !std::isfinite(movesHeight) || !std::isfinite(outfitHeight) || bodyHeight>=-.5f || movesHeight>=-.5f || outfitHeight>=-.5f) {
         error="Invalid native animation scaling input.";return false;
     }
     bool bt4=model.entries.size()==253 && model.entries[252].compare(0,8,"BT4WARRI")==0;
@@ -94,7 +94,7 @@ inline bool scales(WarriorNativePack::Pack &model,float bodyHeight,float movesHe
         }
         return true;
     };
-    float stanceHeight=bodyHeight;unsigned last=0;bool have=false;
+    float stanceHeight=movesHeight;unsigned last=0;bool have=false;
     for(const auto &s:selections) {
         if(s.group>=10 || s.group==2 || (have && s.group<=last)){error="Ambiguous native animation category order.";return false;}
         last=s.group;have=true;if(s.group==9){stanceHeight=s.height;continue;}
@@ -111,7 +111,9 @@ inline bool scales(WarriorNativePack::Pack &model,float bodyHeight,float movesHe
         WarriorNativePack::put(table,at,s.first|(s.count<<16));putFloat(at+4,ratio);count++;
     }
     if(!append(9,stanceHeight)){error="Invalid native stance animation scale.";return false;}
-    WarriorNativePack::put(table,12,count);std::string standing;bool replaced=false;
+    WarriorNativePack::put(table,12,count);
+    std::string standing=model.entries[35];bool replaced=true;
+    if(!scale_standing(standing,outfitHeight/movesHeight,error))return false;
     for(const auto &s:selections)if(s.group==9) {
         if(model.entries.size()<36){error="Missing native standing-stream target.";return false;}
         standing=s.standing;if(!scale_standing(standing,outfitHeight/s.height,error))return false;replaced=true;

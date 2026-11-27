@@ -58,6 +58,13 @@ inline bool plan(const fs::path &source,const fs::path &staged,std::vector<FileE
         }
         if(before!=after)pending.push_back({source/name,std::move(before),std::move(after)});
     }
+    // Keep routed filenames while recording that an older generated model
+    // has been refreshed. Publish this marker in the same transaction.
+    std::string built;
+    if(read_file(source/".warrior_built",built) && built.compare(0,12,"#warrior 47\n")==0) {
+        auto updated=built;updated.replace(0,12,"#warrior 48\n");
+        pending.push_back({source/".warrior_built",std::move(built),std::move(updated)});
+    }
     out.insert(out.end(),std::make_move_iterator(pending.begin()),std::make_move_iterator(pending.end()));
     error.clear();return true;
 }

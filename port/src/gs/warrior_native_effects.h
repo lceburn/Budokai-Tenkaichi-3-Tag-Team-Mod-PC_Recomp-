@@ -52,6 +52,8 @@ inline bool source(const WarriorRecipe::Document &recipe,unsigned slot,std::stri
     if(!WarriorRecipe::value_ok(name) || name=="none") {error="Unsupported native attack effect donor.";return false;}
     return true;
 }
+inline bool assemble(const std::filesystem::path &root,const WarriorRecipe::Document &recipe,
+                     WarriorNativePack::Pack &out,std::string &error);
 inline bool update(const std::filesystem::path &root,WarriorNativePack::Pack &target,
                    const WarriorRecipe::Document &before,const WarriorRecipe::Document &edited,std::string &error) {
     auto next=target;
@@ -62,14 +64,17 @@ inline bool update(const std::filesystem::path &root,WarriorNativePack::Pack &ta
         if(!load(root,name,effects,error))return false;
         if(target.entries.size()<6 || effects.entries.size()<6 || entry>5) {error="Invalid native effect resource.";return false;}
         next.entries[i]=effects.entries[entry-1];
+        if(!next.flags.empty())next.flags[i]=effects.flags.empty()?0:effects.flags[entry-1];
         if(i>=2 && !edited.get(colour_field(i)).empty()) {
             unsigned rgb;if(!colour(edited.get(colour_field(i)),rgb,error) || !WarriorNativeEffectColours::tint(next.entries[i],rgb,error))return false;
         }
     }
     if(common_source(before)!=common_source(edited) || before.get("aura")!=edited.get("aura")) {
-        WarriorNativePack::Pack effects;if(!load(root,common_source(edited),effects,error))return false;
-        if(next.entries.size()<6){error="Missing native aura resource.";return false;}next.entries[5]=effects.entries[5];
-        if(!edited.get("aura").empty()) {unsigned rgb;if(!colour(edited.get("aura"),rgb,error) || !WarriorNativeEffectColours::common(next.entries[5],rgb,error))return false;}
+        // Reapply camera choices after replacing shared effects, just as a
+        // complete build does. An Effects/colour edit must not discard them.
+        WarriorNativePack::Pack effects;if(!assemble(root,edited,effects,error))return false;
+        if(next.entries.size()<6){error="Missing native shared effect resource.";return false;}next.entries[5]=effects.entries[5];
+        if(!next.flags.empty())next.flags[5]=effects.flags.empty()?0:effects.flags[5];
     }
     target=std::move(next);return true;
 }
@@ -81,12 +86,27 @@ inline bool assemble(const std::filesystem::path &root,const WarriorRecipe::Docu
         std::string name;unsigned entry;WarriorNativePack::Pack donor;
         if(!source(recipe,i,name,entry,error) || !load(root,name,donor,error))return false;
         result.entries[i]=donor.entries[entry-1];
+        if(!result.flags.empty())result.flags[i]=donor.flags.empty()?0:donor.flags[entry-1];
         if(i>=2 && !recipe.get(colour_field(i)).empty()){unsigned rgb;if(!colour(recipe.get(colour_field(i)),rgb,error) || !WarriorNativeEffectColours::tint(result.entries[i],rgb,error))return false;}
     }
     WarriorNativePack::Pack aura;if(!load(root,common_source(recipe),aura,error))return false;result.entries[5]=aura.entries[5];
+    // Shared visual effects contain loop cameras as well. Camera defaults
+    // belong to Move Set, independently of the selected visual-effects donor.
+    std::string moveSource=recipe.get("moves");if(moveSource.empty())moveSource=recipe.get("body");
+    if(moveSource!=common_source(recipe)) {
+        WarriorNativePack::Pack moves,common,moveCommon;
+        if(!load(root,moveSource,moves,error) || !WarriorNativePack::decode(result.entries[5],common,error) ||
+           !WarriorNativePack::decode(moves.entries[5],moveCommon,error) || common.entries.size()<=7 || moveCommon.entries.size()<=7) {
+            error="Incomplete native default loop camera source.";return false;
+        }
+        common.entries[7]=moveCommon.entries[7];
+        if(!common.flags.empty())common.flags[7]=moveCommon.flags.empty()?0:moveCommon.flags[7];
+        if(!WarriorNativePack::encode(common,result.entries[5],error))return false;
+    }
     const char *attackKeys[]={"blast2_1","blast2_2","ultimate"};
+    const char *cameraKeys[]={"cam_blast2_1","cam_blast2_2","cam_ultimate_loop"};
     for(unsigned target=0;target<3;target++) {
-        auto loop=target==2?recipe.get("cam_ultimate_loop"):std::string();
+        auto loop=recipe.get(cameraKeys[target]);
         if(loop.empty())loop=recipe.get(attackKeys[target]);
         if(loop.empty())continue;
         auto colon=loop.rfind(':');

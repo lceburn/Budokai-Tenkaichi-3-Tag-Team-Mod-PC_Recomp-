@@ -135,8 +135,9 @@ inline bool apply(const WarriorNativePack::Pack &body,const WarriorNativePack::P
     std::vector<WarriorNativeTextureBindings::Texture> original,combined;
     if(!WarriorNativeTextureBindings::textures(body.entries[11],original,error) ||
        !WarriorNativeTextureBindings::textures(textures,combined,error))return false;
-    unsigned normal=0,shades=0;for(const auto &t:combined)if(t.psm==0)shades++;else normal++;
+    unsigned normal=0,shades=0;for(const auto &t:combined)if(t.psm==0)shades++;else if(!t.auxiliary)normal++;
     mesh[0x4e]=0;mesh[0x4f]=char(normal);mesh[0x50]=char(normal);mesh[0x51]=char(shades);
+    if(!WarriorNativeTextureBindings::fade_header(mesh,bodyMesh,body.entries[11],textures,error))return false;
     for(unsigned field:{0x4cu,0x54u}) {
         unsigned index=static_cast<unsigned char>(bodyMesh[field]);if(field==0x54 && !index)continue;
         if(index>=original.size()){error="Invalid native hair face material index.";return false;}

@@ -7,7 +7,7 @@ inline bool texture(uint64_t value,const std::vector<WarriorNativeTextureBinding
     unsigned tbp=value&0x3fff,cbp=(value>>37)&0x3fff,psm=(value>>20)&63;
     const WarriorNativeTextureBindings::Texture *from=nullptr;
     for(const auto &t:source) {
-        if(shade ? (t.psm==0 && t.tbp==cbp) : (t.psm==psm && t.tbp==tbp && t.cbp==cbp))from=&t;
+        if(!from && (shade ? (t.psm==0 && t.tbp==cbp) : (!t.auxiliary && t.psm==psm && t.tbp==tbp && t.cbp==cbp)))from=&t;
     }
     WarriorNativeTextureBindings::Texture cross;
     if(!from && !shade && WarriorNativeTextureBindings::material(source,tbp,cbp,cross) && cross.psm==psm)from=&cross;
