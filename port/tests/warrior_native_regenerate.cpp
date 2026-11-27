@@ -24,7 +24,7 @@ int main(int argc,char **argv) {
     for(unsigned i=0;i<4;i++)assert(files[i].path==source/a[i]);
     assert(publish(root,files,error));
     std::string raw;assert(read_file(source/"Old_anm.pak",raw,true) && raw=="new");
-    auto refreshed=oldManifest;refreshed.replace(0,12,"#warrior 49\n");
+    auto refreshed=oldManifest;refreshed.replace(0,12,"#warrior 50\n");
     assert(read_file(source/".warrior_built",raw) && raw==refreshed);
     assert(!fs::exists(source/"New_anm.pak"));
     // Portraits publish under the original routed names, including both members.

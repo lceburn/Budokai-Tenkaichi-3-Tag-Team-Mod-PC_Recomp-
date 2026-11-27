@@ -294,7 +294,7 @@ inline bool generate(const fs::path &root,const Document &recipe,const fs::path 
     }
     if(catalogueOnly){*catalogueOnly=std::move(materials);error.clear();return true;}
     if(intact.empty() || intact.size()!=damaged.size()){error="The stock source has no complete model family.";return false;}
-    std::string built="#warrior 49\n";
+    std::string built="#warrior 50\n";
     for(const auto &name:intact)built+=name+"\n";for(const auto &name:damaged)built+=name+"\n";
     const int ids[]={1431+moves.id*10,1432+moves.id*10,760+portraitId,7+portraitId*2,8+portraitId*2};
     const std::string prefix="Goku_"+std::to_string(moves.id);

@@ -228,32 +228,17 @@ inline std::vector<size_t> palettes(const std::string &data) {
     }
     return found;
 }
-inline void follow_colours(std::string &target,const std::string &before,const std::string &after) {
-    std::vector<WarriorNativeTextureBindings::Texture> source,destination,painted;std::string error;
-    if(!WarriorNativeTextureBindings::textures(before,source,error) || !WarriorNativeTextureBindings::textures(after,painted,error) ||
-       !WarriorNativeTextureBindings::textures(target,destination,error))return;
+// All expression replacements render into the model's faceTex slot. Apply
+// its actual material transform to every frame, including unique shade colors.
+inline void follow_colours(std::string &target,const Hsv &from,const Hsv &to) {
+    std::vector<WarriorNativeTextureBindings::Texture> frames;std::string error;
+    if(!WarriorNativeTextureBindings::textures(target,frames,error))return;
     size_t table=WarriorNativePack::word(target,4)*4;
-    for(size_t i=0;i<destination.size();i++)if(destination[i].psm==19 || destination[i].psm==20) {
-        const auto &d=destination[i];const WarriorNativeTextureBindings::Texture *a=nullptr,*b=nullptr;
-        // Facial frames have different pixels. Their palette address identifies
-        // the surface; never guess from a similar RGB elsewhere on the body.
-        for(size_t j=0;j<source.size();j++)if(!source[j].auxiliary && source[j].psm==d.psm && source[j].cbp==d.cbp) {
-            if(a && a->palette!=source[j].palette){a=nullptr;break;}
-            a=&source[j];
-        }
-        if(!a)continue;
-        for(const auto &p:painted)if(!p.auxiliary && p.psm==a->psm && p.tbp==a->tbp && p.cbp==a->cbp){b=&p;break;}
-        if(!b || a->palette.size()!=b->palette.size() || a->palette==b->palette)continue;
+    for(size_t i=0;i<frames.size();i++)if(frames[i].psm==19 || frames[i].psm==20) {
+        size_t count=frames[i].psm==19?256:16;
+        if(frames[i].palette.size()<count*4)continue;
         size_t dest=size_t(WarriorNativePack::word(target,table+i*64+4))*4+96;
-        for(size_t n=0;n+4<=d.palette.size();n+=4) {
-            size_t nearest=0;int best=301;
-            for(size_t j=0;j+4<=a->palette.size();j+=4) {
-                int distance=0;for(unsigned k=0;k<3;k++){int delta=int((unsigned char)d.palette[n+k])-int((unsigned char)a->palette[j+k]);distance+=delta*delta;}
-                if(distance<best){best=distance;nearest=j;}
-            }
-            if(best==301)continue;
-            for(unsigned k=0;k<3;k++)target[dest+n+k]=char(std::max(0,std::min(255,int((unsigned char)d.palette[n+k])+int((unsigned char)b->palette[nearest+k])-int((unsigned char)a->palette[nearest+k]))));
-        }
+        for(size_t n=0;n<count;n++)turn(from,to,target.data()+dest+n*4);
     }
 }
 #include "warrior_native_recolour.inl"

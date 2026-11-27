@@ -129,6 +129,10 @@ inline bool recolour(WarriorNativePack::Pack &model,const std::vector<Colour> &c
         for(unsigned field:{0x4cu,0x4du,0x52u})if((unsigned char)mesh[field]>=insert)mesh[field]=char((unsigned char)mesh[field]+extras.size());
         mesh[0x51]=char(shades+extras.size());
     }
-    for(size_t i=12;i<17 && i<next.entries.size();i++)follow_colours(next.entries[i],original,data);
+    unsigned face=(unsigned char)model.entries[2][0x4c];auto faceChange=changes.find(face);
+    if(faceChange!=changes.end()) {
+        const auto &m=bases.at(face);const auto &c=faceChange->second;
+        for(size_t i=12;i<17 && i<next.entries.size();i++)follow_colours(next.entries[i],hsv(m.r,m.g,m.b),hsv(c.r,c.g,c.b));
+    }
     next.entries[11]=std::move(data);model=std::move(next);error.clear();return true;
 }

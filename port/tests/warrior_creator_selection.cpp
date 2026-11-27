@@ -50,7 +50,8 @@ int main(int argc,char **argv) {
     fs::create_directory(root/"warrior-sources");assert(write(root/"warrior-sources/assets.tsv","fixture"));
     assert(refresh_selected(*selected()));
     assert(write(selected()->source/".warrior_built","#warrior 48\n"));assert(refresh_selected(*selected()));
-    assert(write(selected()->source/".warrior_built","#warrior 49\n"));assert(!refresh_selected(*selected()));
+    assert(write(selected()->source/".warrior_built","#warrior 49\n"));assert(refresh_selected(*selected()));
+    assert(write(selected()->source/".warrior_built","#warrior 50\n"));assert(!refresh_selected(*selected()));
     assert(write(root/"mods/enabled.txt","First\n"));
     assert(PortZwNative_Open()==1 && PortZwNative_Selected()==0 && selected()->folder=="First");
     puts("PASS save/reopen keeps selected identity and edits; new character, reorder/removal and unsaved colour message");
