@@ -22,6 +22,6 @@ int main(int argc,char **argv) {
     assert(selected()->folder==folder && selected()->edited.raw==before);
     assert(!refresh_selected(*selected()));
     std::string marker;assert(read(selected()->source/".warrior_built",marker));
-    assert(marker.compare(0,12,"#warrior 48\n")==0);
+    assert(marker.compare(0,12,"#warrior 49\n")==0);
     puts("PASS unchanged Save all refreshes older model resources once, preserving character identity and recipe");
 }

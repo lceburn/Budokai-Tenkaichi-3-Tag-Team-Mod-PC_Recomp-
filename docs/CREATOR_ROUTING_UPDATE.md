@@ -13,3 +13,13 @@ After updating, select an existing affected character and use Save all to rebuil
 F1 > Spectator offers Button passthrough while in spectate mode, off by default. In manual Free, Follow or Overview views, enabled passthrough forwards fighter buttons while analog sticks remain camera inputs. Select remains reserved when camera cycling is enabled. Shoulder buttons, triggers and stick clicks no longer also manipulate the camera. Game camera restores normal input. Frozen Photo Mode and automatic death-spectator views retain their existing input rules.
 
 Verification covers production override assembly, runtime aura precedence, all exposed animation groups, loop-camera preservation, six-slot routing/export/install/cleanup, sanitizer-backed room lifecycle, saved-character refresh, spectator controls and live Windows rendering and transformations. These checks do not establish support for every donor combination.
+
+## Surface recoloring
+
+Recoloring reads original palettes and shading ramps rather than transforming shared resources repeatedly. Surfaces with different edits receive independent shading bindings; identical results share one upload. Unchanged assignments preserve the complete original model. Mesh and facial-animation geometry is preserved while shading references can change.
+
+The first displayed surface retains its saved recipe key. Additional palettes using the same pixel pattern receive distinct keys, allowing independent edits without repurposing the original selection. Auxiliary fade uploads are no longer listed as editable surfaces. Facial-expression palettes follow their matching material address instead of a similar RGB anywhere on the body.
+
+Existing generated resources from builder versions 47 and 48 refresh to version 49 when the selected character is saved, including an unchanged Save all. Recipe content, routed filenames, form links, selected identity and unrelated library entries are preserved. Capacity failures reject the edit before publishing any model data.
+
+The sanitizer regression checks byte-exact identity edits for all 241 donor models, single-surface edits for the 240 donors with structurally valid upload tables, and distinct material identities for all 23 palette-alias donors. One pre-existing malformed upload table remains rejected for actual edits. Multi-surface tests compare each material's mesh and facial-animation shading against an isolated edit and verify request-order independence and unchanged geometry. Costume/damage generation and a mixed Broly/Goku head are also covered.

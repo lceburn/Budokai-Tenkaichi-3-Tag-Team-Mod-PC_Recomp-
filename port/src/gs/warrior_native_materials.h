@@ -27,6 +27,37 @@ inline uint32_t identity(const std::string &data,size_t start,size_t end) {
     for(size_t i=start;i<end;i++)h=(h^static_cast<unsigned char>(data[i]))*0x1000193u;
     auto folded=(h&0xffffff)^(h>>24);return 0x40000010u|((folded<<5)&0x1fffffe0u);
 }
+// Keep the old key for the first displayed surface, so saved recipes retain
+// their meaning. Distinguish other palettes of the same pixel pattern.
+inline bool material_keys(const std::string &data,std::vector<uint32_t> &keys,std::string &error) {
+    if(data.size()<8)return false;
+    unsigned count=WarriorNativePack::word(data,0);size_t table=size_t(WarriorNativePack::word(data,4))*4;
+    if(!count || count>128 || table>data.size() || count*64>data.size()-table){error="Invalid material key table.";return false;}
+    keys.assign(count,0);std::set<uint32_t> reserved;std::vector<std::string> signatures(count);
+    for(unsigned i=0;i<count;i++) {
+        size_t e=table+i*64;unsigned psm=(wide(data,e+48)>>20)&63;
+        if(psm!=19 && psm!=20)continue;
+        size_t p=size_t(WarriorNativePack::word(data,e))*4,c=size_t(WarriorNativePack::word(data,e+4))*4;
+        size_t bytes=WarriorNativePack::word(data,e+8),pal=WarriorNativePack::word(data,e+12);
+        if(!p || !c)continue;
+        if(bytes<96 || pal<96 || p>data.size() || bytes>data.size()-p || c>data.size() || pal>data.size()-c){error="Invalid material key upload.";return false;}
+        keys[i]=identity(data,p+96,p+bytes);reserved.insert(keys[i]);
+        signatures[i]=data.substr(p+96,bytes-96)+data.substr(c+96,pal-96);
+    }
+    std::map<uint32_t,std::map<std::string,uint32_t>> assigned;
+    for(unsigned i=0;i<count;i++)if(keys[i]) {
+        auto &group=assigned[keys[i]];auto found=group.find(signatures[i]);
+        if(found!=group.end()){keys[i]=found->second;continue;}
+        uint32_t key=keys[i];
+        if(!group.empty()) {
+            key=identity(signatures[i],0,signatures[i].size());
+            while(reserved.count(key))key=0x40000010u|((key+32u)&0x1fffffe0u);
+            reserved.insert(key);
+        }
+        group[signatures[i]]=key;keys[i]=key;
+    }
+    return true;
+}
 inline bool dominant(const std::string &data,size_t e,Material &result) {
     auto tex0=wide(data,e+48);unsigned w=1u<<((tex0>>26)&15),h=1u<<((tex0>>30)&15),psm=(tex0>>20)&63;
     if(w>512 || h>512 || (psm!=19 && psm!=20) || WarriorNativePack::word(data,e+24)>>8)return false;
@@ -73,16 +104,19 @@ inline bool catalogue(const WarriorNativePack::Pack &model,std::vector<Material>
     if(!count || count>128 || table<8 || table>data.size() || count*64>data.size()-table) {
         error="Invalid model texture table.";return false;
     }
-    std::vector<Material> found;std::set<uint32_t> seen;
+    std::vector<uint32_t> keys;if(!material_keys(data,keys,error))return false;
+    std::vector<Material> found;std::set<uint32_t> seen;bool shading=false;
     for(unsigned i=0;i<count;i++) {
         size_t e=table+i*64;auto tex0=wide(data,e+48);unsigned psm=(tex0>>20)&63;
+        if(psm==0)shading=true;
+        if(shading)continue; // Auxiliary fade uploads are not editable surfaces.
         size_t pixels=size_t(WarriorNativePack::word(data,e))*4,palette=size_t(WarriorNativePack::word(data,e+4))*4;
         auto bytes=WarriorNativePack::word(data,e+8),palBytes=WarriorNativePack::word(data,e+12);
         if((psm!=19 && psm!=20) || !pixels || !palette)continue;
         if(bytes<96 || pixels>data.size() || bytes>data.size()-pixels || palette>data.size() || palBytes>data.size()-palette) {
             error="A texture upload leaves the model resource.";return false;
         }
-        auto key=identity(data,pixels+96,pixels+bytes);if(!seen.insert(key).second)continue;
+        auto key=keys[i];if(!seen.insert(key).second)continue;
         Material m{key,int(i)};dominant(data,e,m);found.push_back(m);
     }
     result=std::move(found);return true;
@@ -101,6 +135,7 @@ inline bool usage(const WarriorNativePack::Pack &model,std::map<uint32_t,std::se
     std::vector<WarriorNativeTextureBindings::Texture> textures;
     if(model.entries.size()<12 || !WarriorNativeParts::records(model.entries[2],rows,error) ||
        !WarriorNativeTextureBindings::textures(model.entries[11],textures,error))return false;
+    std::vector<uint32_t> keys;if(!material_keys(model.entries[11],keys,error))return false;
     const auto &mesh=model.entries[2];
     for(const auto &row:rows) {
         if(row.size<96)continue;
@@ -116,7 +151,7 @@ inline bool usage(const WarriorNativePack::Pack &model,std::map<uint32_t,std::se
                 WarriorNativeTextureBindings::Texture t;
                 if(n>=3 && WarriorNativeTextureBindings::material(textures,WarriorNativePack::word(mesh,at+20)&0x3fff,
                    (WarriorNativePack::word(mesh,at+24)>>5)&0x3fff,t))
-                    out[identity(t.pixels,0,t.pixels.size())].insert(row.node);
+                    for(size_t k=0;k<textures.size();k++)if(!textures[k].auxiliary && textures[k].pixels==t.pixels && textures[k].palette==t.palette && keys[k]){out[keys[k]].insert(row.node);break;}
                 j+=23+n*12;
             }
             dma+=16+bytes;if((tag&0xf0000000)==0x60000000)break;
@@ -194,86 +229,32 @@ inline std::vector<size_t> palettes(const std::string &data) {
     return found;
 }
 inline void follow_colours(std::string &target,const std::string &before,const std::string &after) {
-    auto sources=palettes(before),destinations=palettes(target);
-    for(auto dest:destinations)for(unsigned n=0;n<16;n++) {
-        size_t at=dest+n*4,nearest=0;int best=301;
-        for(auto source:sources)for(unsigned j=0;j<16;j++) {
-            size_t p=source+j*4;int distance=0;
-            for(unsigned k=0;k<3;k++) {
-                int delta=int(static_cast<unsigned char>(target[at+k]))-int(static_cast<unsigned char>(before[p+k]));distance+=delta*delta;
-            }
-            if(distance<best){best=distance;nearest=p;}
+    std::vector<WarriorNativeTextureBindings::Texture> source,destination,painted;std::string error;
+    if(!WarriorNativeTextureBindings::textures(before,source,error) || !WarriorNativeTextureBindings::textures(after,painted,error) ||
+       !WarriorNativeTextureBindings::textures(target,destination,error))return;
+    size_t table=WarriorNativePack::word(target,4)*4;
+    for(size_t i=0;i<destination.size();i++)if(destination[i].psm==19 || destination[i].psm==20) {
+        const auto &d=destination[i];const WarriorNativeTextureBindings::Texture *a=nullptr,*b=nullptr;
+        // Facial frames have different pixels. Their palette address identifies
+        // the surface; never guess from a similar RGB elsewhere on the body.
+        for(size_t j=0;j<source.size();j++)if(!source[j].auxiliary && source[j].psm==d.psm && source[j].cbp==d.cbp) {
+            if(a && a->palette!=source[j].palette){a=nullptr;break;}
+            a=&source[j];
         }
-        if(best==301)continue;
-        for(unsigned k=0;k<3;k++) {
-            int value=int(static_cast<unsigned char>(target[at+k]))+int(static_cast<unsigned char>(after[nearest+k]))-int(static_cast<unsigned char>(before[nearest+k]));
-            target[at+k]=char(std::max(0,std::min(255,value)));
+        if(!a)continue;
+        for(const auto &p:painted)if(!p.auxiliary && p.psm==a->psm && p.tbp==a->tbp && p.cbp==a->cbp){b=&p;break;}
+        if(!b || a->palette.size()!=b->palette.size() || a->palette==b->palette)continue;
+        size_t dest=size_t(WarriorNativePack::word(target,table+i*64+4))*4+96;
+        for(size_t n=0;n+4<=d.palette.size();n+=4) {
+            size_t nearest=0;int best=301;
+            for(size_t j=0;j+4<=a->palette.size();j+=4) {
+                int distance=0;for(unsigned k=0;k<3;k++){int delta=int((unsigned char)d.palette[n+k])-int((unsigned char)a->palette[j+k]);distance+=delta*delta;}
+                if(distance<best){best=distance;nearest=j;}
+            }
+            if(best==301)continue;
+            for(unsigned k=0;k<3;k++)target[dest+n+k]=char(std::max(0,std::min(255,int((unsigned char)d.palette[n+k])+int((unsigned char)b->palette[nearest+k])-int((unsigned char)a->palette[nearest+k]))));
         }
     }
 }
-inline bool recolour(WarriorNativePack::Pack &model,const std::vector<Colour> &colours,std::string &error) {
-    if(colours.empty())return true;
-    std::vector<Material> checked;
-    if(!catalogue(model,checked,error))return false;
-    auto data=model.entries[11];auto count=WarriorNativePack::word(data,0);
-    size_t start=size_t(WarriorNativePack::word(data,4))*4;
-    if(model.entries.size()<3 || model.entries[2].size()<0x52){error="Missing material bindings.";return false;}
-    const auto &mesh=model.entries[2];unsigned normal=static_cast<unsigned char>(mesh[0x4f]),shades=static_cast<unsigned char>(mesh[0x51]);
-    if(normal>count || shades>16 || shades>count-normal){error="Invalid material binding counts.";return false;}
-    std::vector<std::set<unsigned>> shadeFor(count);
-    // VIF material blocks contain the base TEX0 and shading CLUT addresses.
-    // Require a complete block and bounded vertex payload before reading it.
-    for(size_t at=0;at+88<=mesh.size();at+=4)if(WarriorNativePack::word(mesh,at)==0x6c058000) {
-        size_t vertices=WarriorNativePack::word(mesh,at+52)&0x7fff;
-        if(vertices>(mesh.size()-at-88)/48)continue;
-        auto tbp=WarriorNativePack::word(mesh,at+20)&0x3fff;
-        auto cbp=(WarriorNativePack::word(mesh,at+24)>>5)&0x3fff;
-        auto shadow=(WarriorNativePack::word(mesh,at+40)>>5)&0x3fff;
-        for(unsigned i=0;i<normal;i++) {
-            auto e=start+i*64;
-            if(WarriorNativePack::word(data,e+32)!=tbp || WarriorNativePack::word(data,e+36)!=cbp)continue;
-            for(unsigned j=normal;j<normal+shades;j++)if(WarriorNativePack::word(data,start+j*64+32)==shadow)shadeFor[i].insert(j);
-        }
-    }
-    std::set<uint32_t> keys;
-    for(const auto &c:colours) {
-        if((c.key&0xe000001f)!=0x40000010 || !keys.insert(c.key).second ||
-           c.r<0 || c.r>255 || c.g<0 || c.g>255 || c.b<0 || c.b>255) {
-            error="Invalid native material colour.";return false;
-        }
-        std::set<size_t> painted;
-        for(unsigned i=0;i<count;i++) {
-            size_t e=start+i*64;unsigned psm=(wide(data,e+48)>>20)&63;
-            size_t pixels=size_t(WarriorNativePack::word(data,e))*4,palette=size_t(WarriorNativePack::word(data,e+4))*4;
-            auto bytes=WarriorNativePack::word(data,e+8),palBytes=WarriorNativePack::word(data,e+12);
-            if((psm!=19 && psm!=20) || !pixels || !palette || identity(data,pixels+96,pixels+bytes)!=c.key)continue;
-            if(palBytes<160 || palette>data.size() || palBytes>data.size()-palette) {
-                error="The material palette is truncated.";return false;
-            }
-            if(!painted.insert(palette).second)continue;
-            Material m{c.key,int(i)};
-            if(!dominant(data,e,m)){error="Could not read the native material's base colour.";return false;}
-            auto from=hsv(m.r,m.g,m.b),to=hsv(c.r,c.g,c.b);
-            for(unsigned n=0;n<16;n++)turn(from,to,data.data()+palette+96+n*4);
-            for(auto shadow:shadeFor[i]) {
-                size_t s=start+shadow*64,p=size_t(WarriorNativePack::word(data,s))*4;
-                auto length=WarriorNativePack::word(data,s+8);
-                if(length<1120 || p>data.size() || length>data.size()-p) {
-                    error="A shading upload leaves the material resource.";return false;
-                }
-                for(unsigned n=0;n<256;n++) {
-                    char *pixel=data.data()+p+96+n*4;
-                    if(!(pixel[0] || pixel[1] || pixel[2]))continue;
-                    char difference[3];int old[]={m.r,m.g,m.b},next[]={c.r,c.g,c.b};
-                    for(unsigned k=0;k<3;k++)difference[k]=char(std::max(0,old[k]-int(static_cast<unsigned char>(pixel[k]))));
-                    turn(from,to,difference);
-                    for(unsigned k=0;k<3;k++)pixel[k]=char(std::max(0,next[k]-int(static_cast<unsigned char>(difference[k]))));
-                }
-            }
-        }
-    }
-    // Keep facial-expression texture palettes consistent with the base face.
-    for(size_t i=12;i<17 && i<model.entries.size();i++)follow_colours(model.entries[i],model.entries[11],data);
-    model.entries[11]=std::move(data);return true;
-}
+#include "warrior_native_recolour.inl"
 }

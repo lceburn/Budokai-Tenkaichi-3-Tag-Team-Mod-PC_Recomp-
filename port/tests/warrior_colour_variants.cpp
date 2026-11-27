@@ -31,7 +31,16 @@ int main(int argc,char **argv) {
         assert(WarriorNativeBuild::read_file(output/"painted"/file.path().filename(),b,true));
         assert(WarriorNativePack::decode(a,before,error) && WarriorNativePack::decode(b,after,error));
         assert(before.entries.size()==after.entries.size());
-        for(size_t i=0;i<before.entries.size();i++)if(i<11 || i>16)assert(before.entries[i]==after.entries[i]);
+        for(size_t i=0;i<before.entries.size();i++)if(i<2 || (i>16))assert(before.entries[i]==after.entries[i]);
+        // Independent shading can change a material's shading address, but
+        // must preserve all vertex data and other mesh/facial-stream fields.
+        for(unsigned i=2;i<=10;i++) {
+            auto geometry=after.entries[i];const auto &original=before.entries[i];assert(geometry.size()==original.size());
+            for(size_t at=0;at+88<=original.size();at+=4)if(WarriorNativePack::word(original,at)==0x6c058000)
+                WarriorNativePack::put(geometry,at+40,WarriorNativePack::word(original,at+40));
+            if(i==2)for(unsigned field:{0x4cu,0x4du,0x51u,0x52u})geometry[field]=original[field];
+            assert(geometry==original);
+        }
         if(file.path().filename().u8string().find("_dmg")!=std::string::npos && before.entries[11]!=after.entries[11])recolouredDamage++;
         models++;
     }
