@@ -52,6 +52,14 @@ int main(int argc,char **argv) {
     auto visuals=camera;visuals.raw+="effects=Broly\n";
     Pack originalFx,rebuiltFx,donorFx,common,cameras,donorCommon,donorCameras;
     assert(WarriorNativeEffects::assemble(root,camera,originalFx,e) && WarriorNativeEffects::assemble(root,visuals,rebuiltFx,e));
+    for(unsigned i=0;i<5;i++)assert(originalFx.entries[i]==rebuiltFx.entries[i]);
+    auto mixed=visuals;mixed.raw+="blast2_1=Vegeta (GT) Super Saiyan 4:2\nultimatefx=Vegeta (GT) Super Saiyan 4:1\n";
+    Pack mixedFx;assert(WarriorNativeEffects::assemble(root,mixed,mixedFx,e));
+    Pack selectedFx;assert(WarriorNativeEffects::load(root,"Vegeta (GT) Super Saiyan 4",selectedFx,e));
+    assert(mixedFx.entries[2]==selectedFx.entries[3] && mixedFx.entries[4]==selectedFx.entries[2]);
+    for(unsigned i:{0u,1u,3u})assert(mixedFx.entries[i]==originalFx.entries[i]);
+    auto resetFx=mixedFx;assert(WarriorNativeEffects::update(root,resetFx,mixed,visuals,e));
+    assert(resetFx.entries==rebuiltFx.entries && resetFx.flags==rebuiltFx.flags);
     assert(WarriorNativeEffects::load(root,"Vegeta (GT) Super Saiyan 4",donorFx,e));
     assert(decode(rebuiltFx.entries[5],common,e) && decode(common.entries[7],cameras,e));
     assert(decode(donorFx.entries[5],donorCommon,e) && decode(donorCommon.entries[7],donorCameras,e));

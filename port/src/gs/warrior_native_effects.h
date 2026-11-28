@@ -47,7 +47,8 @@ inline bool source(const WarriorRecipe::Document &recipe,unsigned slot,std::stri
         }
         name=value.substr(0,colon);entry=unsigned(value.back()-'0')+(slot<2?0:2);
     }else {
-        name=recipe.get("effects");if(name.empty())name=recipe.get("moves");if(name.empty())name=recipe.get("body");entry=slot+1;
+        // Ki-blast/charge visuals never replace a technique's own effects.
+        name=recipe.get("moves");if(name.empty())name=recipe.get("body");entry=slot+1;
     }
     if(!WarriorRecipe::value_ok(name) || name=="none") {error="Unsupported native attack effect donor.";return false;}
     return true;

@@ -1,5 +1,17 @@
 # Creator routing and spectator controls
 
+## Targeted creator separation
+
+The menu now calls `moves` Melee moves, `style` Stats and `effects` Ki blasts. Recipe keys and donor choices are unchanged. Stats remains the existing stats/template donor; Melee moves remains the baseline for fighting behavior and inherited techniques. Charging and the other supported animation selectors replace their existing motion groups without becoming stat or effect selectors.
+
+Ki blasts supplies the shared ki/charge effect resources. Each of the five special attacks keeps effects from its explicitly selected technique, otherwise Melee moves. An explicit per-attack effect choice has highest priority. Camera selections and aura colour are reapplied independently. Both complete generation and incremental editing/reset use this precedence. Builder 51 refreshes older native resources on an unchanged Save all, preserving recipe identity and routed filenames.
+
+Aura Source controls the runtime aura preset used for flames, model lighting and ki trails. The reference also leaves the shared character effects pack unchanged when only Aura Source changes; that pack contains ki/charge effects and loop cameras and must not be reassigned wholesale. Black aura colour is now accepted by the body-light tint, matching particle and model tint handling. Native ability inheritance still applies when Aura Source is Default.
+
+The reference's controlled `anim_melee` example accepts the recipe but produces the baseline animation pack. This does not establish a safe animation-only melee transplant. That native control remains unavailable; copying attack events from another fighter as a cosmetic override would change gameplay and is outside this targeted correction. The sword-dependent attack issue is deferred.
+
+Photo Mode exit keeps the selected camera mode and existing local pose/zoom without resetting the camera. Game camera resumes normal tracking. Frozen-photo input restrictions, manual-view button passthrough on/off, analog camera controls, Select cycling, overlay/rollback guards and battle cleanup retain their behavior.
+
 Explicit Aura Source takes priority over inherited aura abilities. Default keeps native Move Set aura behavior. The choice is carried in the model's animation metadata, including when that model is shared online. Aura black (`000000`) is a valid color.
 
 Default stance uses Move Set animations and standing stream, scaled to the body. An explicit Stance donor replaces those animations and its standing stream. Body geometry stays independent. Effects changes and aura-color edits preserve camera choices; both Blast 2 loop-camera selectors now override their attack donors.

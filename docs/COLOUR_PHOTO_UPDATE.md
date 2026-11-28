@@ -4,7 +4,7 @@ Surface Colors now offers Normal and Damaged material lists. The preview follows
 
 Copy Color and Paste Color reuse a shade across materials and variants. Reset Color restores the selected material's original donor default, including after saving and reopening. A damaged material can override the inherited normal color without changing the normal model.
 
-The F1 Spectator menu adds an opt-in Photo Mode setting. During an actually frozen offline pause, Square hides or restores the pause menu, spectator camera movement and Select view cycling remain available, and Start resumes normally. The prior camera mode returns on exit. Online pause does not freeze a network match, so this mode is unavailable there.
+The F1 Spectator menu adds an opt-in Photo Mode setting. During an actually frozen offline pause, Square hides or restores the pause menu, spectator camera movement and Select view cycling remain available, and Start resumes normally. Exit keeps the selected camera mode and its local position, orientation and zoom; Game camera resumes normal tracking. Frozen-photo input filtering and the F1 button-passthrough setting after resuming retain their behavior. Online pause does not freeze a network match, so this mode is unavailable there.
 
 The network loading minigame change is deferred. Existing deterministic network loading cadence, canonical target selection, crash repairs, diagnostics, updater preservation, and script mods remain in place.
 

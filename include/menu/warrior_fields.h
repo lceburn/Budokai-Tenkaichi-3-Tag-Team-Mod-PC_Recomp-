@@ -7,7 +7,7 @@ enum { ZW_TEXT, ZW_DONOR, ZW_PART, ZW_ATTACK, ZW_RGB, ZW_NUMBER, ZW_FORM, ZW_LAY
  X(TITLE,0,"title","Title",ZW_TEXT) \
  X(BODY,0,"body","Body",ZW_DONOR) \
  X(VOICE,0,"voice","Voice",ZW_DONOR) \
- X(STYLE,0,"style","Fighting style",ZW_DONOR) \
+ X(STYLE,0,"style","Stats",ZW_DONOR) \
  X(STANCE,0,"stance","Stance",ZW_PART) \
  X(PORTRAIT,0,"portrait","Portrait",ZW_PART) \
  X(LOOK2,0,"look2","Costume 2",ZW_PART) \
@@ -38,8 +38,8 @@ enum { ZW_TEXT, ZW_DONOR, ZW_PART, ZW_ATTACK, ZW_RGB, ZW_NUMBER, ZW_FORM, ZW_LAY
  X(ARMBUILD,1,"armbuild","Arm build",ZW_NUMBER) \
  X(TORSOBUILD,1,"torsobuild","Torso build",ZW_NUMBER) \
  X(LEGBUILD,1,"legbuild","Leg build",ZW_NUMBER) \
- X(MOVES,2,"moves","Move set",ZW_DONOR) \
- X(EFFECTS,2,"effects","Effects",ZW_PART) \
+ X(MOVES,2,"moves","Melee moves",ZW_DONOR) \
+ X(EFFECTS,2,"effects","Ki blasts",ZW_PART) \
  X(FINISHERS,2,"finishers","Finishers",ZW_PART) \
  X(BLAST11,2,"blast1_1","Blast 1 - first",ZW_ATTACK) \
  X(BLAST12,2,"blast1_2","Blast 1 - second",ZW_ATTACK) \

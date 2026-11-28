@@ -516,7 +516,7 @@ static int save_native_stock() {
 static bool refresh_selected(const Draft &entry) {
     if(&entry!=selected() || entry.fresh || entry.original.raw!=entry.edited.raw || !WarriorNativeStock::supports(entry.edited))return false;
     std::string built;
-    return read(entry.source/".warrior_built",built) && (built.compare(0,12,"#warrior 47\n")==0 || built.compare(0,12,"#warrior 48\n")==0 || built.compare(0,12,"#warrior 49\n")==0) &&
+    return read(entry.source/".warrior_built",built) && (built.compare(0,12,"#warrior 47\n")==0 || built.compare(0,12,"#warrior 48\n")==0 || built.compare(0,12,"#warrior 49\n")==0 || built.compare(0,12,"#warrior 50\n")==0) &&
         WarriorNativeSources::generation_available(library.root);
 }
 static int save_native_stock_edits() {

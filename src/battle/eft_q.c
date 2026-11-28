@@ -231,7 +231,7 @@ void EftGlow_SetType(EftGlow *w, s32 objId, s32 type, s32 paramFlags) {
 #ifdef PORT
     {
         s32 rgb=PortGame_WarriorAuraColour(BtlCharApi_GetChara(objId));
-        if(rgb>0) {
+        if(rgb>=0) {
             f32 red=rgb&255,green=(rgb>>8)&255,blue=(rgb>>16)&255,peak=red;
             if(green>peak)peak=green;if(blue>peak)peak=blue;if(peak<1.0f)peak=1.0f;
             red/=peak;green/=peak;blue/=peak;

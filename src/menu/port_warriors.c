@@ -340,10 +340,15 @@ static void zw_draw(void) {
         }
         else if(zwFields[field].kind==ZW_ATTACK)sprintf(line,"Technique slot: %d",parameter);
         else if(field!=ZW_VOICE && field!=ZW_STYLE && field!=ZW_MOVES)sprintf(line,"Source costume: %d",parameter);
-        else Ps_Copy(line,"Select the fighter whose voice or style you want.",sizeof(line));
+        else if(field==ZW_STYLE)Ps_Copy(line,"Stats donor: health, combat stats and ki rates.",sizeof(line));
+        else if(field==ZW_MOVES)Ps_Copy(line,"Punches, kicks and rush combos; default techniques follow this fighter.",sizeof(line));
+        else Ps_Copy(line,"Select the fighter whose voice you want.",sizeof(line));
         if(page==ZW_CHOOSE) {
             if(field==ZW_HEADSET)Ps_Cat(line," | Whole head replaces hair, head and face. Cross applies.",sizeof(line));
             else if(field==ZW_HEAD)Ps_Cat(line," | Skull and ears only; Hair and Face stay separate.",sizeof(line));
+            else if(field==ZW_EFFECTS)Ps_Copy(line,"Ki-blast and charge effects only; techniques keep their own effects.",sizeof(line));
+            else if(field==ZW_ANIM_CHARGE)Ps_Copy(line,"Charge poses only; ki rates, aura and blast effects stay separate.",sizeof(line));
+            else if(field==ZW_AURAFROM)Ps_Copy(line,"Aura flames, body light and ki trails; Default follows Melee moves.",sizeof(line));
             else Ps_Cat(line," | Cross applies the choice, then updates the preview.",sizeof(line));
         }
         Ps_Prompt(0,"Choose");Ps_Prompt(3,"Adjust");Ps_Prompt(2,"Cancel");
